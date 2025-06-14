@@ -186,9 +186,14 @@ def calculate_trade_levels(current_price, historical_prices, asset_type):
         # NEU: Berechne MACD
         # MACD benötigt eine Mindestanzahl an Datenpunkten (normalerweise macd_slow_period + macd_signal_period - 1)
         # Die ta-lib-Funktion kümmert sich um die Periodenlänge, aber es ist gut, genug Daten zu haben.
-        if len(all_prices) >= max(macd_fast_period, macd_slow_period, macd_signal_period):
-            macd_series = ta.trend.macd(all_prices, window_fast=macd_fast_period, window_slow=macd_slow_period, window_sign=macd_signal_period)
+        if len(all_prices) >= macd_slow_period: # Mindestens so viele Datenpunkte wie die langsamste EMA-Periode
+            # Korrigierter Aufruf: 'window_sign' wird hier NICHT verwendet
+            macd_series = ta.trend.macd(all_prices, window_fast=macd_fast_period, window_slow=macd_slow_period)
             macd_line = macd_series.iloc[-1]
+            
+            # Diese Funktionen benötigen KEIN window_fast/window_slow, da sie die MACD-Linie als Basis nehmen
+            # ABER: ta.trend.macd_signal und macd_diff können auch direkt mit der Preisreihe aufgerufen werden
+            # und dann die Parameter window_fast, window_slow, window_sign nutzen
             macd_signal_line = ta.trend.macd_signal(all_prices, window_fast=macd_fast_period, window_slow=macd_slow_period, window_sign=macd_signal_period).iloc[-1]
             macd_histogram = ta.trend.macd_diff(all_prices, window_fast=macd_fast_period, window_slow=macd_slow_period, window_sign=macd_signal_period).iloc[-1]
 
@@ -196,10 +201,27 @@ def calculate_trade_levels(current_price, historical_prices, asset_type):
 
             # NEU: MACD Crossover Logik zur Bestätigung oder Signalgenerierung
             # Wir prüfen das Crossover nur, wenn wir genug Daten für die vorherige Periode haben
-            if len(all_prices) >= max(macd_fast_period, macd_slow_period, macd_signal_period) + 1:
-                macd_series_prev = ta.trend.macd(all_prices.iloc[:-1], window_fast=macd_fast_period, window_slow=macd_slow_period, window_sign=macd_signal_period)
-                macd_line_prev = macd_series_prev.iloc[-1]
-                macd_signal_line_prev = ta.trend.macd_signal(all_prices.iloc[:-1], window_fast=macd_fast_period, window_slow=macd_slow_period, window_sign=macd_signal_period).iloc[-1]
+            # Und stellen sicher, dass alle MACD-Linien existieren
+            if len(all_prices) >= macd_slow_period + 1 and macd_line is not None and macd_signal_line is not None:
+                # Hier müssen wir die vorherigen Werte ebenfalls korrekt berechnen
+                # Dafür brauchen wir die MACD-Serie der vorherigen Punkte
+                macd_series_prev_calc = ta.trend.macd(all_prices.iloc[:-1], window_fast=macd_fast_period, window_slow=macd_slow_period)
+                macd_line_prev = macd_series_prev_calc.iloc[-1] if not macd_series_prev_calc.empty else None
+                
+                macd_signal_series_prev_calc = ta.trend.macd_signal(all_prices.iloc[:-1], window_fast=macd_fast_period, window_slow=macd_slow_period, window_sign=macd_signal_period)
+                macd_signal_line_prev = macd_signal_series_prev_calc.iloc[-1] if not macd_signal_series_prev_calc.empty else None
+
+                if macd_line_prev is not None and macd_signal_line_prev is not None:
+                    # MACD Cross Up (Kaufsignal)
+                    if macd_line_prev < macd_signal_line_prev and macd_line >= macd_signal_line:
+                        print(f"!!! {asset_type}: MACD Cross Up (Confirm BUY) !!!")
+                        if trade_signal == "NEUTRAL" or trade_signal == "HOLD_BULLISH": # Wenn noch kein starkes Signal
+                            trade_signal = "BUY" # MACD Crossover als primäres Signal
+                    # MACD Cross Down (Verkaufssignal)
+                    elif macd_line_prev > macd_signal_line_prev and macd_line <= macd_signal_line:
+                        print(f"!!! {asset_type}: MACD Cross Down (Confirm SELL) !!!")
+                        if trade_signal == "NEUTRAL" or trade_signal == "HOLD_BEARISH":
+                            trade_signal = "SELL" # MACD Crossover als primäres Signal
 
                 # MACD Cross Up (Kaufsignal)
                 if macd_line_prev < macd_signal_line_prev and macd_line >= macd_signal_line:
