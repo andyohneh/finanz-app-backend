@@ -2,8 +2,9 @@ from flask import Flask, jsonify
 from flask_cors import CORS
 import requests
 import os
-import pandas as pd # NEU: Importiere pandas
-import ta.trend # NEU: Importiere ta.trend für technische Indikatoren
+import pandas as pd
+import ta.trend # Importiere ta.trend für technische Indikatoren
+import ta.momentum # NEU: Importiere ta.momentum für RSI etc. (vorbereitet)
 
 app = Flask(__name__)
 CORS(app)
@@ -12,7 +13,7 @@ CORS(app)
 BINANCE_API_KEY = os.getenv('BINANCE_API_KEY', 'Rk3PgYQk5cRd3MFZggibVSygaT3t1g9GvxVukLHDC6OZToinRhGDH5UQ29YtnCgw')
 BINANCE_SECRET_KEY = os.getenv('BINANCE_SECRET_KEY', 'cvlpf2G8qODAQ55iJQ6ZV8BfLzhCocGg5DR14ecDEBRGKKBvffBwii7o3ZhBC2Sk')
 FMP_API_KEY = os.getenv('FMP_API_KEY', 'hbWngJ2fn18YpGJqH6R2lk5vHTx7pv1j')
-TWELVEDATA_API_KEY = os.getenv('TWELVEDATA_API_KEY', '2a152b2fb77743cda7c0066278e4ef37') # ERSETZE DIES!
+TWELVEDATA_API_KEY = os.getenv('TWELVEDATA_API_KEY', '2a152b2fb77743cda7c0066278e4ef37') # Dein Key ist jetzt hier eingetragen
 
 # Basis-URLs der APIs
 BINANCE_API_BASE_URL = "https://api.binance.com/api/v3"
@@ -35,17 +36,13 @@ def get_bitcoin_price():
         print("Bitcoin-Preis nicht im erwarteten Format gefunden.")
         return None
 
-# NEU: Historische Bitcoin-Preise von Binance holen
 def get_bitcoin_historical_prices(interval='1h', limit=100):
     try:
-        # Endpunkt für Candlestick-Daten (Klines)
         response = requests.get(f"{BINANCE_API_BASE_URL}/klines?symbol=BTCUSDT&interval={interval}&limit={limit}")
         response.raise_for_status()
         data = response.json()
-        # Binance Klines-Format: [timestamp, open, high, low, close, volume, ...]
-        # Wir brauchen die 'close'-Preise (Index 4)
         close_prices = [float(kline[4]) for kline in data]
-        return pd.Series(close_prices) # Wandelt Liste in Pandas Series um
+        return pd.Series(close_prices)
     except requests.exceptions.RequestException as e:
         print(f"Fehler beim Abrufen historischer Bitcoin-Preise: {e}")
         return None
@@ -67,19 +64,14 @@ def get_gold_price():
         print(f"Unbekannter Fehler beim Abrufen des XAU/USD Preises: {e}")
         return None
 
-# NEU: Historische Gold-Preise von Twelve Data holen
 def get_gold_historical_prices(interval='1min', outputsize=100):
     try:
-        # Twelve Data Endpunkt für historische Kurse (Time Series)
-        # Für XAU/USD kann die Intervalleinschränkung im Free Tier anders sein.
-        # '1min' ist oft für Echtzeitdaten, '1day' für längere Historie.
         response = requests.get(f"{TWELVEDATA_API_BASE_URL}/time_series?symbol=XAU/USD&interval={interval}&outputsize={outputsize}&apikey={TWELVEDATA_API_KEY}")
         response.raise_for_status()
         data = response.json()
         if 'values' in data and data['values']:
             close_prices = [float(entry['close']) for entry in data['values']]
-            # Die neuesten Daten sind am Anfang der Liste, wir wollen sie chronologisch
-            return pd.Series(close_prices[::-1]) # Umkehren für chronologische Reihenfolge
+            return pd.Series(close_prices[::-1])
         else:
             print(f"Historische XAU/USD Preise nicht im erwarteten Format gefunden von Twelve Data: {data}")
             return None
@@ -108,18 +100,14 @@ def get_brent_oil_price():
         print("Brent Oil (BZ=F) Preis nicht im erwarteten Format gefunden.")
         return None
 
-# NEU: Historische Brent Oil Preise von FMP holen
 def get_brent_oil_historical_prices(limit=100):
     try:
-        # FMP Historical Prices for Commodities: /historical-price/{symbol}?apikey=...
         response = requests.get(f"{FMP_API_BASE_URL}/historical-price/BZ=F?apikey={FMP_API_KEY}")
         response.raise_for_status()
         data = response.json()
         if 'historical' in data and data['historical']:
-            # Die neuesten Daten sind am Anfang der Liste, wir brauchen die 'close'-Preise
-            # Beschränken auf die 'limit' neuesten Preise
             close_prices = [float(entry['close']) for entry in data['historical'][:limit]]
-            return pd.Series(close_prices[::-1]) # Umkehren für chronologische Reihenfolge
+            return pd.Series(close_prices[::-1])
         else:
             print(f"Historische Brent Oil Preise nicht im erwarteten Format gefunden von FMP: {data}")
             return None
@@ -131,70 +119,123 @@ def get_brent_oil_historical_prices(limit=100):
         return None
 
 
-# --- UNSERE "KI"-LOGIK (MIT SMA) ---
+# --- UNSERE "KI"-LOGIK (MIT SMA Crossover) ---
 def calculate_trade_levels(current_price, historical_prices, asset_type):
     if current_price is None:
         return None, None, None
 
     entry_price = round(current_price, 2)
 
-    # Berechne den SMA, wenn historische Daten verfügbar sind
-    sma_period = 20 # Beispiel: SMA über die letzten 20 Datenpunkte (z.B. Stunden oder Tage)
-    sma_value = None
-    if historical_prices is not None and len(historical_prices) >= sma_period:
-        # Füge den aktuellen Preis zu den historischen Preisen hinzu, um den neuesten SMA zu berechnen
-        # (Dies ist wichtig, da der aktuelle Preis oft noch nicht in den "historischen" Klines enthalten ist)
-        all_prices = pd.concat([historical_prices, pd.Series([current_price])])
-        sma_value = ta.trend.sma_indicator(all_prices, window=sma_period).iloc[-1]
-        print(f"Calculated SMA for {asset_type} ({sma_period} period): {sma_value:.2f}")
+    # Definiere Perioden für schnelle und langsame SMAs
+    # Typische Swing Trading SMAs könnten 10/20, 20/50 oder 50/100 sein
+    # Wir nehmen hier 10 und 20 für ein schnelleres Signal
+    fast_sma_period = 10
+    slow_sma_period = 20
 
+    fast_sma_value = None
+    slow_sma_value = None
+    trade_signal = "NEUTRAL" # Kann "BUY", "SELL", "HOLD" sein
 
-    # Beispiel-Logik: Buy/Sell-Signal basierend auf SMA und Prozentsätzen
-    # Dies ist eine sehr vereinfachte Strategie!
+    if historical_prices is not None and len(historical_prices) >= slow_sma_period:
+        # Füge den aktuellen Preis zu den historischen Preisen hinzu für die Berechnung
+        all_prices = pd.concat([historical_prices, pd.Series([current_price])]).reset_index(drop=True)
+
+        # Berechne den schnellen SMA
+        if len(all_prices) >= fast_sma_period:
+            fast_sma_value = ta.trend.sma_indicator(all_prices, window=fast_sma_period).iloc[-1]
+            # print(f"{asset_type}: Fast SMA ({fast_sma_period} period): {fast_sma_value:.2f}")
+
+        # Berechne den langsamen SMA
+        if len(all_prices) >= slow_sma_period:
+            slow_sma_value = ta.trend.sma_indicator(all_prices, window=slow_sma_period).iloc[-1]
+            # print(f"{asset_type}: Slow SMA ({slow_sma_period} period): {slow_sma_value:.2f}")
+
+        # Swing Trading Logik: SMA Crossover
+        if fast_sma_value is not None and slow_sma_value is not None:
+            # Überprüfe den letzten und vorletzten SMA-Wert, um ein echtes Kreuz zu erkennen
+            # Benötigt mindestens 2 Perioden mehr als der längste SMA für präzise Crossover-Erkennung
+            if len(all_prices) >= slow_sma_period + 1: # Brauchen mindestens einen vorherigen Punkt
+                fast_sma_prev = ta.trend.sma_indicator(all_prices, window=fast_sma_period).iloc[-2]
+                slow_sma_prev = ta.trend.sma_indicator(all_prices, window=slow_sma_period).iloc[-2]
+
+                # Golden Cross (Kaufsignal): Schneller SMA kreuzt langsamen von unten nach oben
+                if fast_sma_prev < slow_sma_prev and fast_sma_value >= slow_sma_value:
+                    trade_signal = "BUY"
+                    print(f"!!! {asset_type}: BUY Signal (Golden Cross) !!!")
+                # Death Cross (Verkaufssignal): Schneller SMA kreuzt langsamen von oben nach unten
+                elif fast_sma_prev > slow_sma_prev and fast_sma_value <= slow_sma_value:
+                    trade_signal = "SELL"
+                    print(f"!!! {asset_type}: SELL Signal (Death Cross) !!!")
+                else:
+                    trade_signal = "HOLD" # Kein Kreuz, Trend fortgesetzt
+                    if current_price > slow_sma_value:
+                        trade_signal = "HOLD_BULLISH" # Weiterhin über langem SMA
+                    else:
+                        trade_signal = "HOLD_BEARISH" # Weiterhin unter langem SMA
+            else: # Nicht genug Daten für präzise Crossover-Erkennung, aber Trend kann angezeigt werden
+                if fast_sma_value > slow_sma_value:
+                    trade_signal = "HOLD_BULLISH"
+                elif fast_sma_value < slow_sma_value:
+                    trade_signal = "HOLD_BEARISH"
+
+    # Anpassung der Take Profit / Stop Loss Faktoren basierend auf dem Signal
     take_profit_factor = 1.01
     stop_loss_factor = 0.99
 
     if asset_type == "XAUUSD":
-        take_profit_factor = 1.005 # 0.5%
-        stop_loss_factor = 0.998  # 0.2%
-        if sma_value is not None:
-            if current_price > sma_value:
-                print(f"XAUUSD: Current price ({current_price:.2f}) > SMA ({sma_value:.2f}) - Bullish bias, maybe higher TP.")
-                take_profit_factor = 1.007 # Etwas höherer TP bei Aufwärtstrend
-                stop_loss_factor = 0.997 # Etwas engere SL bei Aufwärtstrend
-            else:
-                print(f"XAUUSD: Current price ({current_price:.2f}) < SMA ({sma_value:.2f}) - Bearish bias.")
-                # Hier könnte man auch ein Verkaufssignal oder ein engeres TP/SL für Short-Positionen machen
-                pass # Für jetzt bleiben die Faktoren gleich
+        take_profit_factor = 1.005
+        stop_loss_factor = 0.998
+        if trade_signal == "BUY":
+            take_profit_factor = 1.007 # Etwas aggressiver bei Kauf
+            stop_loss_factor = 0.997  # Etwas engerer SL
+        elif trade_signal == "SELL":
+            take_profit_factor = 0.995 # Gewinn bei Short-Position
+            stop_loss_factor = 1.002  # Verlust bei Short-Position (umgekehrt)
+        elif trade_signal == "HOLD_BULLISH":
+             take_profit_factor = 1.006
+        elif trade_signal == "HOLD_BEARISH":
+            stop_loss_factor = 0.997
 
     elif asset_type == "Bitcoin (BTC)":
-        take_profit_factor = 1.03 # 3%
-        stop_loss_factor = 0.98  # 2%
-        if sma_value is not None:
-            if current_price > sma_value:
-                print(f"Bitcoin: Current price ({current_price:.2f}) > SMA ({sma_value:.2f}) - Bullish bias, higher TP.")
-                take_profit_factor = 1.04 # 4% TP
-                stop_loss_factor = 0.975 # 2.5% SL
-            else:
-                print(f"Bitcoin: Current price ({current_price:.2f}) < SMA ({sma_value:.2f}) - Bearish bias.")
-                pass
+        take_profit_factor = 1.03
+        stop_loss_factor = 0.98
+        if trade_signal == "BUY":
+            take_profit_factor = 1.04
+            stop_loss_factor = 0.975
+        elif trade_signal == "SELL":
+            take_profit_factor = 0.97 # Gewinn bei Short-Position
+            stop_loss_factor = 1.025 # Verlust bei Short-Position (umgekehrt)
+        elif trade_signal == "HOLD_BULLISH":
+            take_profit_factor = 1.035
+        elif trade_signal == "HOLD_BEARISH":
+            stop_loss_factor = 0.985
 
     elif asset_type == "Brent Oil (BBL)":
-        take_profit_factor = 1.015 # 1.5%
-        stop_loss_factor = 0.99  # 1%
-        if sma_value is not None:
-            if current_price > sma_value:
-                print(f"Brent Oil: Current price ({current_price:.2f}) > SMA ({sma_value:.2f}) - Bullish bias.")
-                take_profit_factor = 1.02 # 2% TP
-            else:
-                print(f"Brent Oil: Current price ({current_price:.2f}) < SMA ({sma_value:.2f}) - Bearish bias.")
-                pass
+        take_profit_factor = 1.015
+        stop_loss_factor = 0.99
+        if trade_signal == "BUY":
+            take_profit_factor = 1.02
+            stop_loss_factor = 0.985
+        elif trade_signal == "SELL":
+            take_profit_factor = 0.98 # Gewinn bei Short-Position
+            stop_loss_factor = 1.015 # Verlust bei Short-Position (umgekehrt)
+        elif trade_signal == "HOLD_BULLISH":
+            take_profit_factor = 1.017
+        elif trade_signal == "HOLD_BEARISH":
+            stop_loss_factor = 0.995
 
-    take_profit = round(current_price * take_profit_factor, 2)
-    stop_loss = round(current_price * stop_loss_factor, 2)
-
-    return entry_price, take_profit, stop_loss
-
+    # Wenn ein SELL-Signal, können wir Take Profit und Stop Loss umkehren, um eine Short-Position darzustellen
+    if trade_signal == "SELL":
+        calculated_tp = round(current_price * take_profit_factor, 2)
+        calculated_sl = round(current_price * stop_loss_factor, 2)
+        # Für Short-Positionen ist TP unter Einstieg, SL über Einstieg
+        # Wir haben die Faktoren bereits umgekehrt, sodass tp < entry und sl > entry ist
+        # Keine Umkehrung der Faktoren, sondern der Logik im Return
+        return entry_price, calculated_tp, calculated_sl
+    else: # BUY, HOLD, oder andere Signale (long position)
+        calculated_tp = round(current_price * take_profit_factor, 2)
+        calculated_sl = round(current_price * stop_loss_factor, 2)
+        return entry_price, calculated_tp, calculated_sl
 
 # --- FLASK-ROUTEN ---
 
@@ -208,7 +249,8 @@ def get_finance_data():
 
     # --- Bitcoin Daten ---
     btc_price = get_bitcoin_price()
-    btc_historical_prices = get_bitcoin_historical_prices()
+    # Hinweis: Binance 'klines' für BTCUSDT sind sehr zuverlässig.
+    btc_historical_prices = get_bitcoin_historical_prices(interval='1h', limit=50) # Genug für 20-Perioden SMA
     btc_entry, btc_tp, btc_sl = calculate_trade_levels(btc_price, btc_historical_prices, "Bitcoin (BTC)")
     response_data.append({
         "asset": "Bitcoin (BTC)",
@@ -220,7 +262,10 @@ def get_finance_data():
 
     # --- XAUUSD (Gold) Daten ---
     gold_price = get_gold_price()
-    gold_historical_prices = get_gold_historical_prices()
+    # Hinweis: Twelve Data Free Tier hat oft Einschränkungen bei historischen Daten (outputsize/interval)
+    # Für Swing Trading wären Tages- oder 4-Stunden-Intervalle besser, aber die sind im Free Tier begrenzt.
+    # Wir nutzen hier 1-Minuten-Daten für kurzfristige Tests.
+    gold_historical_prices = get_gold_historical_prices(interval='1min', outputsize=50) # Genug für 20-Perioden SMA
     gold_entry, gold_tp, gold_sl = calculate_trade_levels(gold_price, gold_historical_prices, "XAUUSD")
     response_data.append({
         "asset": "XAUUSD",
@@ -232,7 +277,8 @@ def get_finance_data():
 
     # --- Brent Oil Daten ---
     brent_oil_price = get_brent_oil_price()
-    brent_oil_historical_prices = get_brent_oil_historical_prices()
+    # FMP Historical Prices sind oft Tagesdaten, gut für längere SMAs
+    brent_oil_historical_prices = get_brent_oil_historical_prices(limit=50) # Genug für 20-Perioden SMA
     brent_entry, brent_tp, brent_sl = calculate_trade_levels(brent_oil_price, brent_oil_historical_prices, "Brent Oil (BBL)")
     response_data.append({
         "asset": "Brent Oil (BBL)",
