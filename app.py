@@ -4,7 +4,7 @@ import requests
 import os
 import pandas as pd
 import ta.trend
-import ta.momentum # Bereits importiert, aber hier explizit für RSI
+import ta.momentum
 
 
 app = Flask(__name__)
@@ -43,7 +43,6 @@ def get_bitcoin_historical_prices(interval='1h', limit=100):
         response.raise_for_status()
         data = response.json()
         close_prices = [float(kline[4]) for kline in data]
-        # Binance gibt die neuesten Daten zuerst, wir wollen es chronologisch für Pandas/TA
         return pd.Series(close_prices).iloc[::-1].reset_index(drop=True)
     except requests.exceptions.RequestException as e:
         print(f"Fehler beim Abrufen historischer Bitcoin-Preise: {e}")
@@ -75,7 +74,6 @@ def get_gold_historical_prices(interval='1min', outputsize=100):
         response.raise_for_status()
         data = response.json()
         if 'values' in data and data['values']:
-            # Twelve Data gibt die neuesten Daten zuerst, wir wollen es chronologisch
             close_prices = [float(entry['close']) for entry in data['values']]
             return pd.Series(close_prices).iloc[::-1].reset_index(drop=True)
         else:
@@ -113,7 +111,6 @@ def get_brent_oil_historical_prices(limit=100):
         data = response.json()
         if 'historical' in data and data['historical']:
             close_prices = [float(entry['close']) for entry in data['historical'][:limit]]
-            # FMP gibt die neuesten Daten zuerst, wir wollen es chronologisch
             return pd.Series(close_prices).iloc[::-1].reset_index(drop=True)
         else:
             print(f"Historische Brent Oil Preise nicht im erwarteten Format gefunden von FMP: {data}")
@@ -126,7 +123,7 @@ def get_brent_oil_historical_prices(limit=100):
         return None
 
 
-# --- UNSERE "KI"-LOGIK (MIT SMA Crossover & RSI) ---
+# --- UNSERE "KI"-LOGIK (MIT SMA Crossover, RSI & MACD) ---
 def calculate_trade_levels(current_price, historical_prices, asset_type):
     if current_price is None:
         return None, None, None
@@ -135,12 +132,20 @@ def calculate_trade_levels(current_price, historical_prices, asset_type):
 
     fast_sma_period = 10
     slow_sma_period = 20
-    rsi_period = 14 # Standard RSI Periode
+    rsi_period = 14
     rsi_overbought = 70
     rsi_oversold = 30
 
+    # MACD Parameter
+    macd_fast_period = 12
+    macd_slow_period = 26
+    macd_signal_period = 9
+
     trade_signal = "NEUTRAL"
     rsi_value = None
+    macd_line = None
+    macd_signal_line = None
+    macd_histogram = None
 
     if historical_prices is not None:
         # Füge den aktuellen Preis zu den historischen Preisen hinzu für die Berechnung
@@ -173,12 +178,42 @@ def calculate_trade_levels(current_price, historical_prices, asset_type):
                 elif fast_sma_value < slow_sma_value:
                     trade_signal = "HOLD_BEARISH"
 
-        # NEU: Berechne RSI
+        # Berechne RSI
         if len(all_prices) >= rsi_period:
             rsi_value = ta.momentum.rsi(all_prices, window=rsi_period).iloc[-1]
             print(f"{asset_type}: RSI ({rsi_period} period): {rsi_value:.2f}")
 
-    # Anpassung der Take Profit / Stop Loss Faktoren basierend auf dem Signal und RSI
+        # NEU: Berechne MACD
+        # MACD benötigt eine Mindestanzahl an Datenpunkten (normalerweise macd_slow_period + macd_signal_period - 1)
+        # Die ta-lib-Funktion kümmert sich um die Periodenlänge, aber es ist gut, genug Daten zu haben.
+        if len(all_prices) >= max(macd_fast_period, macd_slow_period, macd_signal_period):
+            macd_series = ta.trend.macd(all_prices, window_fast=macd_fast_period, window_slow=macd_slow_period, window_sign=macd_signal_period)
+            macd_line = macd_series.iloc[-1]
+            macd_signal_line = ta.trend.macd_signal(all_prices, window_fast=macd_fast_period, window_slow=macd_slow_period, window_sign=macd_signal_period).iloc[-1]
+            macd_histogram = ta.trend.macd_diff(all_prices, window_fast=macd_fast_period, window_slow=macd_slow_period, window_sign=macd_signal_period).iloc[-1]
+
+            print(f"{asset_type}: MACD Line: {macd_line:.2f}, Signal Line: {macd_signal_line:.2f}, Histogram: {macd_histogram:.2f}")
+
+            # NEU: MACD Crossover Logik zur Bestätigung oder Signalgenerierung
+            # Wir prüfen das Crossover nur, wenn wir genug Daten für die vorherige Periode haben
+            if len(all_prices) >= max(macd_fast_period, macd_slow_period, macd_signal_period) + 1:
+                macd_series_prev = ta.trend.macd(all_prices.iloc[:-1], window_fast=macd_fast_period, window_slow=macd_slow_period, window_sign=macd_signal_period)
+                macd_line_prev = macd_series_prev.iloc[-1]
+                macd_signal_line_prev = ta.trend.macd_signal(all_prices.iloc[:-1], window_fast=macd_fast_period, window_slow=macd_slow_period, window_sign=macd_signal_period).iloc[-1]
+
+                # MACD Cross Up (Kaufsignal)
+                if macd_line_prev < macd_signal_line_prev and macd_line >= macd_signal_line:
+                    print(f"!!! {asset_type}: MACD Cross Up (Confirm BUY) !!!")
+                    if trade_signal == "NEUTRAL" or trade_signal == "HOLD_BULLISH": # Wenn noch kein starkes Signal
+                        trade_signal = "BUY" # MACD Crossover als primäres Signal
+                # MACD Cross Down (Verkaufssignal)
+                elif macd_line_prev > macd_signal_line_prev and macd_line <= macd_signal_line:
+                    print(f"!!! {asset_type}: MACD Cross Down (Confirm SELL) !!!")
+                    if trade_signal == "NEUTRAL" or trade_signal == "HOLD_BEARISH":
+                        trade_signal = "SELL" # MACD Crossover als primäres Signal
+
+
+    # Anpassung der Take Profit / Stop Loss Faktoren basierend auf dem Signal und Indikatoren
     take_profit_factor = 1.01
     stop_loss_factor = 0.99
 
@@ -186,17 +221,23 @@ def calculate_trade_levels(current_price, historical_prices, asset_type):
         take_profit_factor = 1.005
         stop_loss_factor = 0.998
         if trade_signal == "BUY":
-            take_profit_factor = 1.007 # Aggressiver bei Kauf
+            take_profit_factor = 1.007
             stop_loss_factor = 0.997
-            if rsi_value is not None and rsi_value < rsi_oversold: # RSI bestätigt Kauf aus Überverkauftheit
+            if rsi_value is not None and rsi_value < rsi_oversold:
                 print(f"XAUUSD: RSI ({rsi_value:.2f}) confirms BUY from oversold.")
-                take_profit_factor = 1.009 # Noch aggressiverer TP
+                take_profit_factor = 1.009
+            if macd_line is not None and macd_line > macd_signal_line: # MACD über Signallinie bestätigt Stärke
+                print(f"XAUUSD: MACD ({macd_line:.2f}) above Signal ({macd_signal_line:.2f}) confirms BUY strength.")
+                take_profit_factor = max(take_profit_factor, 1.01) # Stärkerer TP
         elif trade_signal == "SELL":
-            take_profit_factor = 0.995 # Gewinn bei Short
-            stop_loss_factor = 1.002  # Verlust bei Short
-            if rsi_value is not None and rsi_value > rsi_overbought: # RSI bestätigt Verkauf aus Überkaufheit
+            take_profit_factor = 0.995
+            stop_loss_factor = 1.002
+            if rsi_value is not None and rsi_value > rsi_overbought:
                 print(f"XAUUSD: RSI ({rsi_value:.2f}) confirms SELL from overbought.")
-                take_profit_factor = 0.993 # Noch aggressiverer TP für Short
+                take_profit_factor = 0.993
+            if macd_line is not None and macd_line < macd_signal_line: # MACD unter Signallinie bestätigt Schwäche
+                print(f"XAUUSD: MACD ({macd_line:.2f}) below Signal ({macd_signal_line:.2f}) confirms SELL strength.")
+                take_profit_factor = min(take_profit_factor, 0.99) # Stärkerer TP für Short
         elif trade_signal == "HOLD_BULLISH":
              take_profit_factor = 1.006
         elif trade_signal == "HOLD_BEARISH":
@@ -211,12 +252,18 @@ def calculate_trade_levels(current_price, historical_prices, asset_type):
             if rsi_value is not None and rsi_value < rsi_oversold:
                 print(f"Bitcoin: RSI ({rsi_value:.2f}) confirms BUY from oversold.")
                 take_profit_factor = 1.05
+            if macd_line is not None and macd_line > macd_signal_line:
+                print(f"Bitcoin: MACD ({macd_line:.2f}) above Signal ({macd_signal_line:.2f}) confirms BUY strength.")
+                take_profit_factor = max(take_profit_factor, 1.06)
         elif trade_signal == "SELL":
             take_profit_factor = 0.97
             stop_loss_factor = 1.025
             if rsi_value is not None and rsi_value > rsi_overbought:
                 print(f"Bitcoin: RSI ({rsi_value:.2f}) confirms SELL from overbought.")
                 take_profit_factor = 0.96
+            if macd_line is not None and macd_line < macd_signal_line:
+                print(f"Bitcoin: MACD ({macd_line:.2f}) below Signal ({macd_signal_line:.2f}) confirms SELL strength.")
+                take_profit_factor = min(take_profit_factor, 0.95)
         elif trade_signal == "HOLD_BULLISH":
             take_profit_factor = 1.035
         elif trade_signal == "HOLD_BEARISH":
@@ -231,24 +278,26 @@ def calculate_trade_levels(current_price, historical_prices, asset_type):
             if rsi_value is not None and rsi_value < rsi_oversold:
                 print(f"Brent Oil: RSI ({rsi_value:.2f}) confirms BUY from oversold.")
                 take_profit_factor = 1.025
+            if macd_line is not None and macd_line > macd_signal_line:
+                print(f"Brent Oil: MACD ({macd_line:.2f}) above Signal ({macd_signal_line:.2f}) confirms BUY strength.")
+                take_profit_factor = max(take_profit_factor, 1.03)
         elif trade_signal == "SELL":
             take_profit_factor = 0.98
             stop_loss_factor = 1.015
             if rsi_value is not None and rsi_value > rsi_overbought:
                 print(f"Brent Oil: RSI ({rsi_value:.2f}) confirms SELL from overbought.")
                 take_profit_factor = 0.975
+            if macd_line is not None and macd_line < macd_signal_line:
+                print(f"Brent Oil: MACD ({macd_line:.2f}) below Signal ({macd_signal_line:.2f}) confirms SELL strength.")
+                take_profit_factor = min(take_profit_factor, 0.97)
         elif trade_signal == "HOLD_BULLISH":
             take_profit_factor = 1.017
         elif trade_signal == "HOLD_BEARISH":
             stop_loss_factor = 0.995
 
-    # Berechnung der finalen TP/SL Werte
     calculated_tp = round(current_price * take_profit_factor, 2)
     calculated_sl = round(current_price * stop_loss_factor, 2)
 
-    # Wenn ein SELL-Signal, repräsentieren TP/SL eine Short-Position
-    # (d.h. TP ist unter dem Einstieg, SL ist über dem Einstieg)
-    # Die Faktoren sind bereits entsprechend gewählt.
     return entry_price, calculated_tp, calculated_sl
 
 
@@ -264,8 +313,8 @@ def get_finance_data():
 
     # --- Bitcoin Daten ---
     btc_price = get_bitcoin_price()
-    # Für RSI und SMA Crossover brauchen wir ausreichend Datenpunkte
-    btc_historical_prices = get_bitcoin_historical_prices(interval='1h', limit=50) # Genug für 20-Perioden SMA und 14-Perioden RSI
+    # Für MACD brauchen wir oft längere historische Daten als für einfache SMAs/RSI, da EMAs verwendet werden
+    btc_historical_prices = get_bitcoin_historical_prices(interval='1h', limit=150) # Erhöhtes Limit
     btc_entry, btc_tp, btc_sl = calculate_trade_levels(btc_price, btc_historical_prices, "Bitcoin (BTC)")
     response_data.append({
         "asset": "Bitcoin (BTC)",
@@ -277,7 +326,7 @@ def get_finance_data():
 
     # --- XAUUSD (Gold) Daten ---
     gold_price = get_gold_price()
-    gold_historical_prices = get_gold_historical_prices(interval='1min', outputsize=50)
+    gold_historical_prices = get_gold_historical_prices(interval='1min', outputsize=150) # Erhöhtes Limit
     gold_entry, gold_tp, gold_sl = calculate_trade_levels(gold_price, gold_historical_prices, "XAUUSD")
     response_data.append({
         "asset": "XAUUSD",
@@ -289,7 +338,8 @@ def get_finance_data():
 
     # --- Brent Oil Daten ---
     brent_oil_price = get_brent_oil_price()
-    brent_oil_historical_prices = get_brent_oil_historical_prices(limit=50) # FMP liefert Tagesdaten, Limit für Anzahl der Punkte
+    # Problem mit FMP historischen Daten für Brent Oil bleibt bestehen
+    brent_oil_historical_prices = get_brent_oil_historical_prices(limit=150) # Erhöhtes Limit
     brent_entry, brent_tp, brent_sl = calculate_trade_levels(brent_oil_price, brent_oil_historical_prices, "Brent Oil (BBL)")
     response_data.append({
         "asset": "Brent Oil (BBL)",
