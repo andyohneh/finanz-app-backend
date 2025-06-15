@@ -320,7 +320,7 @@ def get_finance_data():
         "icon": gold_icon
     })
     
-    # API-Nutzung abrufen (Dies wird null zurückgeben, wenn 404 Not Found)
+    # API-Nutzung abrufen
     api_usage = get_api_usage()
 
     response_data['assets'] = assets_data # Asset-Daten unter 'assets' key
