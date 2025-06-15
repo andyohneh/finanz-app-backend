@@ -84,7 +84,30 @@ def get_gold_historical_prices(interval='1min', outputsize=150):
         print(f"Unbekannter Fehler beim Abrufen historischer XAU/USD Preise: {e}")
         return None
 
-# --- get_api_usage() Funktion ist jetzt entfernt ---
+# NEUE FUNKTION: API-Nutzung von Twelve Data abrufen über /last_change/statistics
+def get_api_usage():
+    try:
+        # Endpunkt für API-Nutzung (lt. Support: /last_change/statistics)
+        response = requests.get(f"{TWELVEDATA_API_BASE_URL}/last_change/statistics?apikey={TWELVEDATA_API_KEY}")
+        response.raise_for_status()
+        data = response.json()
+
+        # Annahme: Dieser Endpunkt gibt Felder wie 'total_api_calls', 'period_api_calls', 'period_reset_time' zurück
+        # Oder ähnliche Statistiken.
+        # BITTE HIER PRÜFEN: Welche Felder gibt https://api.twelvedata.com/last_change/statistics?apikey=YOUR_API_KEY tatsächlich zurück?
+        # Die folgenden sind Platzhalter / Annahmen basierend auf typischen Statistik-Endpunkten:
+        return {
+            'requests_made': data.get('calls_made', 'N/A'), # Beispiel: wie viele Anfragen in Periode
+            'requests_limit': data.get('calls_limit', 'N/A'), # Beispiel: Limit für diese Periode
+            'next_reset_in_seconds': data.get('reset_in_seconds', 'N/A'), # Beispiel: Zeit bis Reset
+            'info': data.get('status', 'OK') # Zusätzliche Statusinfo
+        }
+    except requests.exceptions.RequestException as e:
+        print(f"Fehler beim Abrufen der API-Nutzung von Twelve Data (last_change/statistics): {e}")
+        return None
+    except Exception as e:
+        print(f"Unbekannter Fehler beim Abrufen der API-Nutzung (last_change/statistics): {e}")
+        return None
 
 # --- UNSERE "KI"-LOGIK (MIT SMA Crossover, RSI & MACD & kombiniertem Signal) ---
 def calculate_trade_levels(current_price, historical_prices, asset_type, params):
@@ -271,9 +294,8 @@ def home():
 
 @app.route('/api/finance_data')
 def get_finance_data():
-    # response_data ist jetzt direkt das Assets-Array, nicht mehr ein umhüllendes Dict
-    # Die API-Nutzungsdaten werden nicht mehr gesendet
-    assets_data = [] 
+    # Die Antwortstruktur ist jetzt ein Dictionary, das "assets" und "api_usage" enthält.
+    response_data = {} 
 
     # Parameter aus der URL auslesen
     params = {
@@ -288,6 +310,9 @@ def get_finance_data():
         'min_price_deviation_from_sma': float(request.args.get('min_price_deviation_from_sma', 0.002)), 
     }
     print(f"Verwendete Indikator-Parameter: {params}")
+
+    # Daten für Assets
+    assets_data = [] # Liste für die Asset-spezifischen Daten
 
     # --- Bitcoin Daten ---
     btc_price = get_bitcoin_price()
@@ -319,10 +344,13 @@ def get_finance_data():
         "icon": gold_icon
     })
     
-    # Der API-Nutzungs-Code ist jetzt komplett entfernt.
-    # response_data ist ein temporäres leeres Dictionary in der Funktion
-    # Der Rückgabewert ist jetzt NUR DAS ASSETS-ARRAY.
-    return jsonify(assets_data)
+    # API-Nutzung abrufen
+    api_usage = get_api_usage()
+
+    response_data['assets'] = assets_data # Asset-Daten unter 'assets' key
+    response_data['api_usage'] = api_usage # API-Nutzung unter 'api_usage' key
+
+    return jsonify(response_data)
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
