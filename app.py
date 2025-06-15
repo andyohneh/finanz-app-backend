@@ -84,7 +84,31 @@ def get_gold_historical_prices(interval='1min', outputsize=150):
         print(f"Unbekannter Fehler beim Abrufen historischer XAU/USD Preise: {e}")
         return None
 
-# --- Entfernte Funktion get_api_usage() ---
+# NEUE FUNKTION: API-Nutzung von Twelve Data abrufen (KORRIGIERTE FELDER)
+def get_api_usage():
+    try:
+        response = requests.get(f"{TWELVEDATA_API_BASE_URL}/usage?apikey={TWELVEDATA_API_KEY}")
+        response.raise_for_status()
+        data = response.json()
+
+        # Korrigiert: Feldnamen an die tatsächliche API-Antwort anpassen
+        return {
+            'current_usage': data.get('current_usage', 'N/A'), 
+            'plan_limit': data.get('plan_limit', 'N/A'),       
+            'timestamp': data.get('timestamp', 'N/A'),         
+            'plan_category': data.get('plan_category', 'N/A'), 
+            # Diese Felder sind in der Grow-Plan /usage Antwort NICHT enthalten
+            'total_requests': 'N/A', 
+            'usage_today': 'N/A',    
+            'usage_limit': data.get('plan_limit', 'N/A'), 
+            'reset_in_seconds': 60 # Platzhalter für Minutenlimit-Reset (1 Minute)
+        }
+    except requests.exceptions.RequestException as e:
+        print(f"Fehler beim Abrufen der API-Nutzung von Twelve Data: {e}")
+        return None
+    except Exception as e:
+        print(f"Unbekannter Fehler beim Abrufen der API-Nutzung: {e}")
+        return None
 
 # --- UNSERE "KI"-LOGIK (MIT SMA Crossover, RSI & MACD & kombiniertem Signal) ---
 def calculate_trade_levels(current_price, historical_prices, asset_type, params):
