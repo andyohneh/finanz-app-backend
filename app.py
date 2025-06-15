@@ -84,46 +84,7 @@ def get_gold_historical_prices(interval='1min', outputsize=150):
         print(f"Unbekannter Fehler beim Abrufen historischer XAU/USD Preise: {e}")
         return None
 
-# NEUE FUNKTION: API-Nutzung von Twelve Data abrufen über /last_change/statistics
-def get_api_usage():
-    try:
-        # Endpunkt für API-Nutzung (lt. Support: /last_change/statistics)
-        response = requests.get(f"{TWELVEDATA_API_BASE_URL}/last_change/statistics?apikey={TWELVEDATA_API_KEY}")
-        response.raise_for_status()
-        data = response.json()
-
-        # Annahme: Dieser Endpunkt gibt Felder wie 'calls_made', 'calls_limit', 'reset_in_seconds' zurück.
-        # BASIEREND AUF DER JSON-ANTWORT, DIE DU VORHER GESEHEN HAST:
-        # { "current_usage": 3, "plan_limit": 55, "timestamp": "...", "plan_category": "grow" }
-        # Die Felder 'requests_made', 'requests_limit', 'next_reset_in_seconds' gab es in der /usage Doku,
-        # aber /last_change/statistics gibt diese nicht direkt.
-        # Wir müssen die Felder anpassen, die der Support-Endpunkt liefert.
-        # Die Felder aus der direkten Antwort /usage waren current_usage, plan_limit, timestamp, plan_category.
-        # Hier ist eine Kombination, die die Informationen aus beiden Quellen nutzt und Platzhalter setzt,
-        # wenn ein Feld nicht im /last_change/statistics Endpunkt verfügbar ist.
-        
-        # Die Felder im Kommentar sind die, die du von /usage gesehen hast.
-        # Der /last_change/statistics Endpunkt muss man genau prüfen.
-        # Da wir keine Beispiel-JSON-Antwort für /last_change/statistics selbst haben,
-        # müssen wir hier flexibel bleiben oder auf generische N/A setzen.
-        
-        # Da die Fehlermeldung vorher "404 Not Found" war,
-        # ist es am sichersten, generische N/A für Felder zu verwenden, die nicht garantiert sind.
-        # Der Support sagte, es gäbe Statistiken - gehen wir mal von den grundlegenden aus,
-        # die Twelve Data für die Usage-Doku bereitstellt, auch wenn /last_change/statistics anders sein mag.
-        return {
-            'requests_made': data.get('calls_made', 'N/A'), # Annahme eines Feldes
-            'requests_limit': data.get('calls_limit', 'N/A'), # Annahme eines Feldes
-            'next_reset_in_seconds': data.get('reset_in_seconds', 'N/A'), # Annahme eines Feldes
-            'info_status': data.get('status', 'OK'), # Allgemeiner Status
-            'source_endpoint': '/last_change/statistics' # Zum Debuggen, woher die Daten kommen
-        }
-    except requests.exceptions.RequestException as e:
-        print(f"Fehler beim Abrufen der API-Nutzung von Twelve Data (last_change/statistics): {e}")
-        return None
-    except Exception as e:
-        print(f"Unbekannter Fehler beim Abrufen der API-Nutzung (last_change/statistics): {e}")
-        return None
+# --- get_api_usage() Funktion ist jetzt entfernt ---
 
 # --- UNSERE "KI"-LOGIK (MIT SMA Crossover, RSI & MACD & kombiniertem Signal) ---
 def calculate_trade_levels(current_price, historical_prices, asset_type, params):
@@ -265,7 +226,6 @@ def calculate_trade_levels(current_price, historical_prices, asset_type, params)
                 signal_color = "orange"
                 signal_icon = "exclamation"
             elif rsi_signal_status == "ÜBERVERKAUFT":
-                final_trade_signal = "VORSICHT (Überverkauft)"
                 signal_color = "lightblue"
                 signal_icon = "exclamation"
             else:
@@ -310,7 +270,8 @@ def home():
 
 @app.route('/api/finance_data')
 def get_finance_data():
-    response_data = {} # Dies ist ein Dictionary, um API-Nutzung hinzuzufügen
+    # Die Antwortstruktur ist jetzt direkt das Assets-Array (API-Nutzung ist entfernt).
+    assets_data = [] 
 
     # Parameter aus der URL auslesen
     params = {
@@ -325,9 +286,6 @@ def get_finance_data():
         'min_price_deviation_from_sma': float(request.args.get('min_price_deviation_from_sma', 0.002)), 
     }
     print(f"Verwendete Indikator-Parameter: {params}")
-
-    # Daten für Assets
-    assets_data = [] # Liste für die Asset-spezifischen Daten
 
     # --- Bitcoin Daten ---
     btc_price = get_bitcoin_price()
@@ -359,13 +317,8 @@ def get_finance_data():
         "icon": gold_icon
     })
     
-    # API-Nutzung abrufen
-    api_usage = get_api_usage() 
-
-    response_data['assets'] = assets_data # Asset-Daten unter 'assets' key
-    response_data['api_usage'] = api_usage # API-Nutzung unter 'api_usage' key
-
-    return jsonify(response_data)
+    # Der API-Nutzungs-Code ist jetzt komplett entfernt.
+    return jsonify(assets_data) # Sendet jetzt nur das assets_data-Array
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
