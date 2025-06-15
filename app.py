@@ -91,19 +91,22 @@ def calculate_trade_levels(current_price, historical_prices, asset_type, params)
     if current_price is None:
         return None, None, None, "N/A", "gray", "question"
 
-    entry_price = round(current_price, 2)
+    # Default-Faktoren (für den Fall, dass keine Indikatoren berechnet werden oder HALTEN (Neutral))
+    take_profit_factor_long = 1.01
+    stop_loss_factor_long = 0.99
+    take_profit_factor_short = 0.99
+    stop_loss_factor_short = 1.01
 
-    # Initialisiere Faktoren für Long-Position (Standard)
-    take_profit_factor = 1.01
-    stop_loss_factor = 0.99
-    
-    # Spezifische Standard-Faktoren für jedes Asset (für Long-Bias)
     if asset_type == "XAUUSD":
-        take_profit_factor = 1.005 # 0.5% TP
-        stop_loss_factor = 0.998  # 0.2% SL
+        take_profit_factor_long = 1.005 # 0.5% TP long
+        stop_loss_factor_long = 0.998  # 0.2% SL long
+        take_profit_factor_short = 0.995 # 0.5% TP short
+        stop_loss_factor_short = 1.002 # 0.2% SL short
     elif asset_type == "Bitcoin (BTC)":
-        take_profit_factor = 1.03  # 3% TP
-        stop_loss_factor = 0.98   # 2% SL
+        take_profit_factor_long = 1.03 # 3% TP long
+        stop_loss_factor_long = 0.98  # 2% SL long
+        take_profit_factor_short = 0.97 # 3% TP short
+        stop_loss_factor_short = 1.02 # 2% SL short
 
     # Indikator-Parameter von params übernehmen oder Standardwerte verwenden
     fast_sma_period = params.get('fast_sma_period', 10)
@@ -117,14 +120,19 @@ def calculate_trade_levels(current_price, historical_prices, asset_type, params)
     
     # Zusätzlicher Parameter für Signalstärke/Volatilitätsfilter
     min_price_deviation_from_sma = params.get('min_price_deviation_from_sma', 0.002) # 0.2% Abweichung vom langsamen SMA
-    
+    # NEU: Parameter für dynamischen Einstiegspreis
+    entry_price_correction_factor = params.get('entry_price_correction_factor', 0.001) # 0.1% Abweichung für Einstieg
+
     # Initialisiere Signale
     sma_signal = "NEUTRAL"
     rsi_signal_status = "NEUTRAL"
     macd_crossover_signal = "NEUTRAL"
-    final_trade_signal = "HALTEN (Neutral)" # Standard ist neutral
+    final_trade_signal = "HALTEN (Neutral)"
     signal_color = "gray"
-    signal_icon = "minus"
+    signal_icon = "minus" # Standard ist neutral
+    
+    # Der Einstiegspreis wird initial auf den aktuellen Preis gesetzt und dann angepasst
+    entry_price = round(current_price, 2) 
 
     rsi_value = None
     macd_line = None
@@ -195,23 +203,31 @@ def calculate_trade_levels(current_price, historical_prices, asset_type, params)
         # STARKES KAUF-Signal (striktere Bedingungen)
         if (sma_signal == "KAUF" or macd_crossover_signal == "KAUF") and \
            rsi_signal_status != "ÜBERKAUFT" and \
-           is_above_sma_deviation:
+           is_above_sma_deviation: # Zusätzliche Bedingung
             final_trade_signal = "KAUFEN"
             signal_color = "green"
             signal_icon = "arrow-up"
-            print(f"### {asset_type}: STARKES KAUF Signal (Kombiniert) ###")
-        
+            # Dynamischer Einstiegspreis für Kauf-Signal (leicht unter dem aktuellen Preis)
+            entry_price = round(current_price * (1 - entry_price_correction_factor), 2)
+            
         # STARKES VERKAUF-Signal (striktere Bedingungen)
         elif (sma_signal == "VERKAUF" or macd_crossover_signal == "VERKAUF") and \
              rsi_signal_status != "ÜBERVERKAUFT" and \
-             is_below_sma_deviation:
+             is_below_sma_deviation: # Zusätzliche Bedingung
             final_trade_signal = "VERKAUFEN"
             signal_color = "red"
             signal_icon = "arrow-down"
-            print(f"### {asset_type}: STARKES VERKAUF Signal (Kombiniert) ###")
+            # Dynamischer Einstiegspreis für Verkauf-Signal (leicht über dem aktuellen Preis)
+            entry_price = round(current_price * (1 + entry_price_correction_factor), 2)
 
         # HALTEN / VORSICHT-Signale, wenn keine klaren Kauf/Verkauf-Signale
         else:
+            # Hier ist der Einstiegspreis weiterhin der aktuelle Preis,
+            # da man nicht aktiv einsteigt, sondern nur den Trend beobachtet.
+            final_trade_signal = "HALTEN (Neutral)" # Default
+            signal_color = "gray"
+            signal_icon = "minus"
+
             if sma_signal == "TREND_AUF":
                 final_trade_signal = "HALTEN (Aufwärtstrend)"
                 signal_color = "darkgreen"
@@ -228,55 +244,48 @@ def calculate_trade_levels(current_price, historical_prices, asset_type, params)
                 final_trade_signal = "VORSICHT (Überverkauft)"
                 signal_color = "lightblue"
                 signal_icon = "exclamation"
-            else:
-                final_trade_signal = "HALTEN (Neutral)"
-                signal_color = "gray"
-                signal_icon = "minus"
 
 
         # Anpassung der Take Profit / Stop Loss Faktoren basierend auf dem finalen Signal
-        # WICHTIG: Faktoren müssen jetzt an Signalrichtung angepasst werden (Long vs Short)
+        # ACHTUNG: Die Faktoren sind jetzt immer relativ zum dynamisch berechneten entry_price
         if final_trade_signal == "KAUFEN": # Für Long-Position
             if asset_type == "XAUUSD":
-                take_profit_factor = 1.015 
-                stop_loss_factor = 0.994 
+                take_profit = round(entry_price * 1.015, 2) # TP ist ÜBER dem dynamischen Einstieg
+                stop_loss = round(entry_price * 0.994, 2)  # SL ist UNTER dem dynamischen Einstieg
             elif asset_type == "Bitcoin (BTC)":
-                take_profit_factor = 1.07
-                stop_loss_factor = 0.96
+                take_profit = round(entry_price * 1.07, 2)
+                stop_loss = round(entry_price * 0.96, 2)
         elif final_trade_signal == "VERKAUFEN": # Für Short-Position
             if asset_type == "XAUUSD":
-                take_profit_factor = 0.988 # TP ist UNTER dem Einstieg
-                stop_loss_factor = 1.004  # SL ist ÜBER dem Einstieg
+                take_profit = round(entry_price * 0.988, 2) # TP ist UNTER dem dynamischen Einstieg
+                stop_loss = round(entry_price * 1.004, 2)  # SL ist ÜBER dem dynamischen Einstieg
             elif asset_type == "Bitcoin (BTC)":
-                take_profit_factor = 0.94 # TP ist UNTER dem Einstieg
-                stop_loss_factor = 1.05 # SL ist ÜBER dem Einstieg
+                take_profit = round(entry_price * 0.94, 2)
+                stop_loss = round(entry_price * 1.05, 2)
         else: # HALTEN oder VORSICHT (neutrale oder trendbasierte Faktoren)
+            # Hier bleiben TP/SL relativ zum aktuellen Preis, oder leicht angepasst
             if asset_type == "XAUUSD":
                 if final_trade_signal == "HALTEN (Aufwärtstrend)":
-                    take_profit_factor = 1.004 # Leichte Fortsetzung
-                    stop_loss_factor = 0.999
+                    take_profit = round(current_price * 1.004, 2)
+                    stop_loss = round(current_price * 0.999, 2)
                 elif final_trade_signal == "HALTEN (Abwärtstrend)":
-                    take_profit_factor = 0.996 # Leichte Fortsetzung (Short-Bias)
-                    stop_loss_factor = 1.001
+                    take_profit = round(current_price * 0.996, 2) # Short-Bias für TP
+                    stop_loss = round(current_price * 1.001, 2) # Short-Bias für SL
                 else: # Neutral
-                    take_profit_factor = 1.003
-                    stop_loss_factor = 0.999
+                    take_profit = round(current_price * 1.003, 2)
+                    stop_loss = round(current_price * 0.999, 2)
             elif asset_type == "Bitcoin (BTC)":
                 if final_trade_signal == "HALTEN (Aufwärtstrend)":
-                    take_profit_factor = 1.015
-                    stop_loss_factor = 0.988
+                    take_profit = round(current_price * 1.015, 2)
+                    stop_loss = round(current_price * 0.988, 2)
                 elif final_trade_signal == "HALTEN (Abwärtstrend)":
-                    take_profit_factor = 0.985 # Short-Bias
-                    stop_loss_factor = 1.015
+                    take_profit = round(current_price * 0.985, 2) # Short-Bias
+                    stop_loss = round(current_price * 1.015, 2) # Short-Bias
                 else: # Neutral
-                    take_profit_factor = 1.015
-                    stop_loss_factor = 0.988
+                    take_profit = round(current_price * 1.015, 2)
+                    stop_loss = round(current_price * 0.988, 2)
 
-    # Berechnung der finalen TP/SL Werte
-    calculated_tp = round(current_price * take_profit_factor, 2)
-    calculated_sl = round(current_price * stop_loss_factor, 2)
-
-    return entry_price, calculated_tp, calculated_sl, final_trade_signal, signal_color, signal_icon
+    return entry_price, take_profit, stop_loss, final_trade_signal, signal_color, signal_icon
 
 # --- FLASK-ROUTEN ---
 @app.route('/')
@@ -285,7 +294,6 @@ def home():
 
 @app.route('/api/finance_data')
 def get_finance_data():
-    # Die Antwortstruktur ist jetzt direkt das Assets-Array (API-Nutzung ist entfernt).
     assets_data = [] 
 
     # Parameter aus der URL auslesen
@@ -299,6 +307,7 @@ def get_finance_data():
         'macd_slow_period': int(request.args.get('macd_slow_period', 26)),
         'macd_signal_period': int(request.args.get('macd_signal_period', 9)),
         'min_price_deviation_from_sma': float(request.args.get('min_price_deviation_from_sma', 0.002)), 
+        'entry_price_correction_factor': float(request.args.get('entry_price_correction_factor', 0.001)) # NEU: Parameter für Einstiegskorrektur
     }
     print(f"Verwendete Indikator-Parameter: {params}")
 
@@ -332,8 +341,7 @@ def get_finance_data():
         "icon": gold_icon
     })
     
-    # Der API-Nutzungs-Code ist jetzt komplett entfernt.
-    return jsonify(assets_data) # Sendet jetzt nur das assets_data-Array
+    return jsonify(assets_data)
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
