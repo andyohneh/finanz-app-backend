@@ -1,4 +1,4 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request # 'request' neu importieren
 from flask_cors import CORS
 import requests
 import os
@@ -45,7 +45,7 @@ def get_bitcoin_historical_prices(interval='1h', limit=150):
         print(f"Fehler beim Abrufen historischer Bitcoin-Preise: {e}")
         return None
     except Exception as e:
-        print(f"Unbekannter Fehler beim Abrufen historischer Bitcoin-Preise: {e}")
+        print(f"Unbekannter Fehler beim Abrufen historischer Bitcoin-PZITRONESreise: {e}")
         return None
 
 def get_gold_price():
@@ -120,9 +120,9 @@ def get_brent_oil_historical_prices(interval='1min', outputsize=100):
         return None
 
 # --- UNSERE "KI"-LOGIK (MIT SMA Crossover, RSI & MACD & kombiniertem Signal) ---
-def calculate_trade_levels(current_price, historical_prices, asset_type):
+def calculate_trade_levels(current_price, historical_prices, asset_type, params): # params hinzugefügt
     if current_price is None:
-        return None, None, None, "N/A", "gray", "question" # Signal, Farbe, Icon hinzugefügt
+        return None, None, None, "N/A", "gray", "question"
 
     entry_price = round(current_price, 2)
 
@@ -141,35 +141,36 @@ def calculate_trade_levels(current_price, historical_prices, asset_type):
         take_profit_factor = 1.015
         stop_loss_factor = 0.99
 
-    # Indikator-Parameter
-    fast_sma_period = 10
-    slow_sma_period = 20
-    rsi_period = 14
-    rsi_overbought = 70
-    rsi_oversold = 30
-    macd_fast_period = 12
-    macd_slow_period = 26
-    macd_signal_period = 9
+    # Indikator-Parameter von params übernehmen oder Standardwerte verwenden
+    fast_sma_period = params.get('fast_sma_period', 10)
+    slow_sma_period = params.get('slow_sma_period', 20)
+    rsi_period = params.get('rsi_period', 14)
+    rsi_overbought = params.get('rsi_overbought', 70)
+    rsi_oversold = params.get('rsi_oversold', 30)
+    macd_fast_period = params.get('macd_fast_period', 12)
+    macd_slow_period = params.get('macd_slow_period', 26)
+    macd_signal_period = params.get('macd_signal_period', 9)
 
     # Initialisiere Signale
     sma_signal = "NEUTRAL"
-    rsi_signal_status = "NEUTRAL" # Nur Status (überkauft/überverkauft)
-    macd_crossover_signal = "NEUTRAL" # MACD Crossover (KAUF/VERKAUF)
+    rsi_signal_status = "NEUTRAL"
+    macd_crossover_signal = "NEUTRAL"
     final_trade_signal = "HALTEN"
-    signal_color = "gray" # Standardfarbe
-    signal_icon = "question" # Standard Icon
+    signal_color = "gray"
+    signal_icon = "question"
 
     rsi_value = None
     macd_line = None
     macd_signal_line = None
 
-    # NEUE LOGIK: Nur Indikatoren berechnen, wenn genügend historische Daten vorhanden sind
+    # NEUE LOGIK: Zusätzliche Bedingungen für die Signalqualität
+    # Nur Indikatoren berechnen, wenn genügend historische Daten vorhanden sind
     # und das Asset die API-Limits nicht verletzt (aktuell BTC und XAUUSD)
     if historical_prices is not None and asset_type in ["Bitcoin (BTC)", "XAUUSD"]:
         all_prices = pd.concat([historical_prices, pd.Series([current_price])]).reset_index(drop=True)
 
         # SMA Crossover
-        if len(all_prices) >= slow_sma_period + 1: # +1 für vorherigen Wert
+        if len(all_prices) >= slow_sma_period + 1:
             fast_sma_value = ta.trend.sma_indicator(all_prices, window=fast_sma_period).iloc[-1]
             slow_sma_value = ta.trend.sma_indicator(all_prices, window=slow_sma_period).iloc[-1]
             fast_sma_prev = ta.trend.sma_indicator(all_prices, window=fast_sma_period).iloc[-2]
@@ -222,82 +223,80 @@ def calculate_trade_levels(current_price, historical_prices, asset_type):
         # --- Kombinierte Swing-Trading-Strategie zur finalen Signalgenerierung ---
         # Priorisiere klare Signale und nutze andere Indikatoren zur Bestätigung
 
-        # STARKES KAUF-Signal
-        if sma_signal == "KAUF" and macd_crossover_signal == "KAUF":
-            if rsi_value is not None and rsi_value < rsi_oversold + 10: # Aus überverkauft oder fast überverkauft
+        # STARKES KAUF-Signal (striktere Bedingungen)
+        # KAUFEN, wenn SMA-Kauf ODER MACD-Kauf UND RSI nicht überkauft ist
+        if (sma_signal == "KAUF" or macd_crossover_signal == "KAUF") and rsi_signal_status != "ÜBERKAUFT":
+            # Zusätzliche Überprüfung: Preis muss über langem SMA sein für starke Kauf-Bestätigung
+            if current_price > slow_sma_value:
                 final_trade_signal = "KAUFEN"
                 signal_color = "green"
-                signal_icon = "arrow-up" # Icon für Kauf
-                print(f"### {asset_type}: STARKES KAUF Signal (SMA+MACD Crossover, RSI Bestätigung) ###")
-            else: # SMA und MACD Kauf, aber RSI neutral
-                final_trade_signal = "KAUFEN"
-                signal_color = "lightgreen" # Etwas schwächeres Grün
-                signal_icon = "arrow-up" # Icon für Kauf
-                print(f"### {asset_type}: KAUF Signal (SMA+MACD Crossover) ###")
-        
-        # STARKES VERKAUF-Signal
-        elif sma_signal == "VERKAUF" and macd_crossover_signal == "VERKAUF":
-            if rsi_value is not None and rsi_value > rsi_overbought - 10: # Aus überkauft oder fast überkauft
+                signal_icon = "arrow-up"
+                print(f"### {asset_type}: STARKES KAUF Signal (Kombiniert) ###")
+            else:
+                final_trade_signal = "HALTEN (Kauf abwarten)" # Preis nicht stark genug
+                signal_color = "gray"
+                signal_icon = "eye" # Auge-Icon für Beobachtung
+
+        # STARKES VERKAUF-Signal (striktere Bedingungen)
+        # VERKAUFEN, wenn SMA-Verkauf ODER MACD-Verkauf UND RSI nicht überverkauft ist
+        elif (sma_signal == "VERKAUF" or macd_crossover_signal == "VERKAUF") and rsi_signal_status != "ÜBERVERKAUFT":
+            # Zusätzliche Überprüfung: Preis muss unter langem SMA sein für starke Verkauf-Bestätigung
+            if current_price < slow_sma_value:
                 final_trade_signal = "VERKAUFEN"
                 signal_color = "red"
-                signal_icon = "arrow-down" # Icon für Verkauf
-                print(f"### {asset_type}: STARKES VERKAUF Signal (SMA+MACD Crossover, RSI Bestätigung) ###")
-            else: # SMA und MACD Verkauf, aber RSI neutral
-                final_trade_signal = "VERKAUFEN"
-                signal_color = "lightcoral" # Etwas schwächeres Rot
-                signal_icon = "arrow-down" # Icon für Verkauf
-                print(f"### {asset_type}: VERKAUF Signal (SMA+MACD Crossover) ###")
-
-        # Sonstige HALTEN/VORSICHT-Signale
-        elif sma_signal == "TREND_AUF" and macd_line is not None and macd_line > macd_signal_line:
-            final_trade_signal = "HALTEN (Aufwärtstrend)"
-            signal_color = "darkgreen" # Grünton für Halten in Aufwärtstrend
-            signal_icon = "chevron-up" # Icon für Aufwärtstrend
-            print(f"--- {asset_type}: HALTEN Signal (Aufwärtstrend) ---")
-        elif sma_signal == "TREND_AB" and macd_line is not None and macd_line < macd_signal_line:
-            final_trade_signal = "HALTEN (Abwärtstrend)"
-            signal_color = "darkred" # Rotton für Halten in Abwärtstrend
-            signal_icon = "chevron-down" # Icon für Abwärtstrend
-            print(f"--- {asset_type}: HALTEN Signal (Abwärtstrend) ---")
-        elif rsi_signal_status == "ÜBERKAUFT":
-            final_trade_signal = "VORSICHT (Überkauft)"
-            signal_color = "orange"
-            signal_icon = "exclamation" # Icon für Vorsicht
-            print(f"--- {asset_type}: VORSICHT Signal (Überkauft) ---")
-        elif rsi_signal_status == "ÜBERVERKAUFT":
-            final_trade_signal = "VORSICHT (Überverkauft)"
-            signal_color = "lightblue"
-            signal_icon = "exclamation" # Icon für Vorsicht
-            print(f"--- {asset_type}: VORSICHT Signal (Überverkauft) ---")
+                signal_icon = "arrow-down"
+                print(f"### {asset_type}: STARKES VERKAUF Signal (Kombiniert) ###")
+            else:
+                final_trade_signal = "HALTEN (Verkauf abwarten)" # Preis nicht schwach genug
+                signal_color = "gray"
+                signal_icon = "eye" # Auge-Icon für Beobachtung
+        
+        # NEUTRAL / HALTEN
         else:
-            final_trade_signal = "HALTEN (Neutral)"
-            signal_color = "gray"
-            signal_icon = "minus" # Icon für Neutral
-            print(f"--- {asset_type}: HALTEN Signal (Neutral) ---")
+            if sma_signal == "TREND_AUF":
+                final_trade_signal = "HALTEN (Aufwärtstrend)"
+                signal_color = "darkgreen"
+                signal_icon = "chevron-up"
+            elif sma_signal == "TREND_AB":
+                final_trade_signal = "HALTEN (Abwärtstrend)"
+                signal_color = "darkred"
+                signal_icon = "chevron-down"
+            elif rsi_signal_status == "ÜBERKAUFT":
+                final_trade_signal = "VORSICHT (Überkauft)"
+                signal_color = "orange"
+                signal_icon = "exclamation"
+            elif rsi_signal_status == "ÜBERVERKAUFT":
+                final_trade_signal = "VORSICHT (Überverkauft)"
+                signal_color = "lightblue"
+                signal_icon = "exclamation"
+            else:
+                final_trade_signal = "HALTEN (Neutral)"
+                signal_color = "gray"
+                signal_icon = "minus"
 
 
         # Anpassung der Take Profit / Stop Loss Faktoren basierend auf dem finalen Signal
         if final_trade_signal == "KAUFEN":
             if asset_type == "XAUUSD":
-                take_profit_factor = 1.009
-                stop_loss_factor = 0.996
+                take_profit_factor = 1.012 # Etwas aggressiver
+                stop_loss_factor = 0.995 # Etwas enger
             elif asset_type == "Bitcoin (BTC)":
-                take_profit_factor = 1.05
-                stop_loss_factor = 0.97
+                take_profit_factor = 1.06
+                stop_loss_factor = 0.965
         elif final_trade_signal == "VERKAUFEN": # Für Short-Positionen
             if asset_type == "XAUUSD":
-                take_profit_factor = 0.993 # Ziel unter Einstieg
-                stop_loss_factor = 1.002  # Stop über Einstieg
+                take_profit_factor = 0.990 # Etwas aggressiver
+                stop_loss_factor = 1.003  # Etwas enger
             elif asset_type == "Bitcoin (BTC)":
-                take_profit_factor = 0.96 # Ziel unter Einstieg
-                stop_loss_factor = 1.035 # Stop über Einstieg
+                take_profit_factor = 0.95
+                stop_loss_factor = 1.04
         else: # HALTEN oder VORSICHT
             if asset_type == "XAUUSD":
-                take_profit_factor = 1.004 # Kleinere Ziele bei Halten
-                stop_loss_factor = 0.998
+                take_profit_factor = 1.003
+                stop_loss_factor = 0.999
             elif asset_type == "Bitcoin (BTC)":
-                take_profit_factor = 1.02
-                stop_loss_factor = 0.985
+                take_profit_factor = 1.015
+                stop_loss_factor = 0.988
             # Behalte die initialen Faktoren, wenn keine Indikatoren berechnet werden
 
     # Berechnung der finalen TP/SL Werte
@@ -315,10 +314,27 @@ def home():
 def get_finance_data():
     response_data = []
 
+    # Parameter aus der URL auslesen
+    # Convertiere zu int, wenn vorhanden, sonst Standardwert
+    params = {
+        'fast_sma_period': int(request.args.get('fast_sma_period', 10)),
+        'slow_sma_period': int(request.args.get('slow_sma_period', 20)),
+        'rsi_period': int(request.args.get('rsi_period', 14)),
+        'rsi_overbought': int(request.args.get('rsi_overbought', 70)),
+        'rsi_oversold': int(request.args.get('rsi_oversold', 30)),
+        'macd_fast_period': int(request.args.get('macd_fast_period', 12)),
+        'macd_slow_period': int(request.args.get('macd_slow_period', 26)),
+        'macd_signal_period': int(request.args.get('macd_signal_period', 9)),
+    }
+    print(f"Verwendete Indikator-Parameter: {params}") # Zum Debuggen in den Logs
+
+
     # --- Bitcoin Daten ---
     btc_price = get_bitcoin_price()
-    btc_historical_prices = get_bitcoin_historical_prices(interval='1h', limit=150)
-    btc_entry, btc_tp, btc_sl, btc_signal, btc_color, btc_icon = calculate_trade_levels(btc_price, btc_historical_prices, "Bitcoin (BTC)")
+    # Erhöht das Limit der historischen Daten, um sicherzustellen, dass genügend Daten für alle Indikatoren vorhanden sind
+    # MACD benötigt die längste Historie (slow_period + signal_period + ca. 10 Puffer)
+    btc_historical_prices = get_bitcoin_historical_prices(interval='1h', limit=max(150, params['slow_sma_period'] + params['macd_slow_period'] + params['macd_signal_period'] + 10))
+    btc_entry, btc_tp, btc_sl, btc_signal, btc_color, btc_icon = calculate_trade_levels(btc_price, btc_historical_prices, "Bitcoin (BTC)", params)
     response_data.append({
         "asset": "Bitcoin (BTC)",
         "currentPrice": f"{btc_price:.2f}" if btc_price is not None else "N/A",
@@ -327,13 +343,13 @@ def get_finance_data():
         "stopLoss": f"{btc_sl:.2f}" if btc_sl is not None else "N/A",
         "signal": btc_signal,
         "color": btc_color,
-        "icon": btc_icon # NEU: Icon hinzufügen
+        "icon": btc_icon
     })
 
     # --- XAUUSD (Gold) Daten ---
     gold_price = get_gold_price()
-    gold_historical_prices = get_gold_historical_prices(interval='1min', outputsize=150)
-    gold_entry, gold_tp, gold_sl, gold_signal, gold_color, gold_icon = calculate_trade_levels(gold_price, gold_historical_prices, "XAUUSD")
+    gold_historical_prices = get_gold_historical_prices(interval='1min', outputsize=max(150, params['slow_sma_period'] + params['macd_slow_period'] + params['macd_signal_period'] + 10))
+    gold_entry, gold_tp, gold_sl, gold_signal, gold_color, gold_icon = calculate_trade_levels(gold_price, gold_historical_prices, "XAUUSD", params)
     response_data.append({
         "asset": "XAUUSD",
         "currentPrice": f"{gold_price:.2f}" if gold_price is not None else "N/A",
@@ -342,13 +358,14 @@ def get_finance_data():
         "stopLoss": f"{gold_sl:.2f}" if gold_sl is not None else "N/A",
         "signal": gold_signal,
         "color": gold_color,
-        "icon": gold_icon # NEU: Icon hinzufügen
+        "icon": gold_icon
     })
 
     # --- Brent Oil Daten ---
     brent_oil_price = get_brent_oil_price()
-    brent_oil_historical_prices = get_brent_oil_historical_prices(interval='1min', outputsize=150)
-    brent_entry, brent_tp, brent_sl, brent_signal, brent_color, brent_icon = calculate_trade_levels(brent_oil_price, brent_oil_historical_prices, "Brent Oil (BBL)")
+    # Auch wenn wir wissen, dass die historischen Daten fehlschlagen, übergeben wir 'params' trotzdem
+    brent_oil_historical_prices = get_brent_oil_historical_prices(interval='1min', outputsize=max(100, params['slow_sma_period'] + params['macd_slow_period'] + params['macd_signal_period'] + 10))
+    brent_entry, brent_tp, brent_sl, brent_signal, brent_color, brent_icon = calculate_trade_levels(brent_oil_price, brent_oil_historical_prices, "Brent Oil (BBL)", params)
     response_data.append({
         "asset": "Brent Oil (BBL)",
         "currentPrice": f"{brent_oil_price:.2f}" if brent_oil_price is not None else "N/A",
@@ -357,7 +374,7 @@ def get_finance_data():
         "stopLoss": f"{brent_sl:.2f}" if brent_sl is not None else "N/A",
         "signal": brent_signal,
         "color": brent_color,
-        "icon": brent_icon # NEU: Icon hinzufügen
+        "icon": brent_icon
     })
     return jsonify(response_data)
 
