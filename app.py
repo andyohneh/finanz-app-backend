@@ -93,16 +93,17 @@ def calculate_trade_levels(current_price, historical_prices, asset_type, params)
 
     entry_price = round(current_price, 2)
 
-    # Standard-Faktoren für jedes Asset
+    # Initialisiere Faktoren für Long-Position (Standard)
     take_profit_factor = 1.01
     stop_loss_factor = 0.99
-
+    
+    # Spezifische Standard-Faktoren für jedes Asset (für Long-Bias)
     if asset_type == "XAUUSD":
-        take_profit_factor = 1.005
-        stop_loss_factor = 0.998
+        take_profit_factor = 1.005 # 0.5% TP
+        stop_loss_factor = 0.998  # 0.2% SL
     elif asset_type == "Bitcoin (BTC)":
-        take_profit_factor = 1.03
-        stop_loss_factor = 0.98
+        take_profit_factor = 1.03  # 3% TP
+        stop_loss_factor = 0.98   # 2% SL
 
     # Indikator-Parameter von params übernehmen oder Standardwerte verwenden
     fast_sma_period = params.get('fast_sma_period', 10)
@@ -121,9 +122,9 @@ def calculate_trade_levels(current_price, historical_prices, asset_type, params)
     sma_signal = "NEUTRAL"
     rsi_signal_status = "NEUTRAL"
     macd_crossover_signal = "NEUTRAL"
-    final_trade_signal = "HALTEN"
+    final_trade_signal = "HALTEN (Neutral)" # Standard ist neutral
     signal_color = "gray"
-    signal_icon = "question"
+    signal_icon = "minus"
 
     rsi_value = None
     macd_line = None
@@ -192,20 +193,18 @@ def calculate_trade_levels(current_price, historical_prices, asset_type, params)
         is_below_sma_deviation = (current_price < slow_sma_value * (1 - min_price_deviation_from_sma)) if slow_sma_value is not None else False
 
         # STARKES KAUF-Signal (striktere Bedingungen)
-        # KAUFEN, wenn (SMA-Kauf ODER MACD-Kauf) UND RSI nicht überkauft ist UND Preis über langem SMA (+ Abweichung)
         if (sma_signal == "KAUF" or macd_crossover_signal == "KAUF") and \
            rsi_signal_status != "ÜBERKAUFT" and \
-           is_above_sma_deviation: # Zusätzliche Bedingung
+           is_above_sma_deviation:
             final_trade_signal = "KAUFEN"
             signal_color = "green"
             signal_icon = "arrow-up"
             print(f"### {asset_type}: STARKES KAUF Signal (Kombiniert) ###")
         
         # STARKES VERKAUF-Signal (striktere Bedingungen)
-        # VERKAUFEN, wenn (SMA-Verkauf ODER MACD-Verkauf) UND RSI nicht überverkauft ist UND Preis unter langem SMA (- Abweichung)
         elif (sma_signal == "VERKAUF" or macd_crossover_signal == "VERKAUF") and \
              rsi_signal_status != "ÜBERVERKAUFT" and \
-             is_below_sma_deviation: # Zusätzliche Bedingung
+             is_below_sma_deviation:
             final_trade_signal = "VERKAUFEN"
             signal_color = "red"
             signal_icon = "arrow-down"
@@ -226,6 +225,7 @@ def calculate_trade_levels(current_price, historical_prices, asset_type, params)
                 signal_color = "orange"
                 signal_icon = "exclamation"
             elif rsi_signal_status == "ÜBERVERKAUFT":
+                final_trade_signal = "VORSICHT (Überverkauft)"
                 signal_color = "lightblue"
                 signal_icon = "exclamation"
             else:
@@ -235,27 +235,42 @@ def calculate_trade_levels(current_price, historical_prices, asset_type, params)
 
 
         # Anpassung der Take Profit / Stop Loss Faktoren basierend auf dem finalen Signal
-        if final_trade_signal == "KAUFEN":
+        # WICHTIG: Faktoren müssen jetzt an Signalrichtung angepasst werden (Long vs Short)
+        if final_trade_signal == "KAUFEN": # Für Long-Position
             if asset_type == "XAUUSD":
                 take_profit_factor = 1.015 
                 stop_loss_factor = 0.994 
             elif asset_type == "Bitcoin (BTC)":
                 take_profit_factor = 1.07
                 stop_loss_factor = 0.96
-        elif final_trade_signal == "VERKAUFEN": # Für Short-Positionen
+        elif final_trade_signal == "VERKAUFEN": # Für Short-Position
             if asset_type == "XAUUSD":
-                take_profit_factor = 0.988 
-                stop_loss_factor = 1.004  
+                take_profit_factor = 0.988 # TP ist UNTER dem Einstieg
+                stop_loss_factor = 1.004  # SL ist ÜBER dem Einstieg
             elif asset_type == "Bitcoin (BTC)":
-                take_profit_factor = 0.94
-                stop_loss_factor = 1.05
-        else: # HALTEN oder VORSICHT (neutralere Faktoren)
+                take_profit_factor = 0.94 # TP ist UNTER dem Einstieg
+                stop_loss_factor = 1.05 # SL ist ÜBER dem Einstieg
+        else: # HALTEN oder VORSICHT (neutrale oder trendbasierte Faktoren)
             if asset_type == "XAUUSD":
-                take_profit_factor = 1.003
-                stop_loss_factor = 0.999
+                if final_trade_signal == "HALTEN (Aufwärtstrend)":
+                    take_profit_factor = 1.004 # Leichte Fortsetzung
+                    stop_loss_factor = 0.999
+                elif final_trade_signal == "HALTEN (Abwärtstrend)":
+                    take_profit_factor = 0.996 # Leichte Fortsetzung (Short-Bias)
+                    stop_loss_factor = 1.001
+                else: # Neutral
+                    take_profit_factor = 1.003
+                    stop_loss_factor = 0.999
             elif asset_type == "Bitcoin (BTC)":
-                take_profit_factor = 1.015
-                stop_loss_factor = 0.988
+                if final_trade_signal == "HALTEN (Aufwärtstrend)":
+                    take_profit_factor = 1.015
+                    stop_loss_factor = 0.988
+                elif final_trade_signal == "HALTEN (Abwärtstrend)":
+                    take_profit_factor = 0.985 # Short-Bias
+                    stop_loss_factor = 1.015
+                else: # Neutral
+                    take_profit_factor = 1.015
+                    stop_loss_factor = 0.988
 
     # Berechnung der finalen TP/SL Werte
     calculated_tp = round(current_price * take_profit_factor, 2)
