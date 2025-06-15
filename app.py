@@ -10,6 +10,7 @@ app = Flask(__name__)
 CORS(app)
 
 # --- API-SCHLÜSSEL SICHER VERWALTEN ---
+# ERSETZE DIESE PLATZHALTER MIT DEINEN ECHTEN SCHLÜSSELN!
 BINANCE_API_KEY = os.getenv('BINANCE_API_KEY', 'Rk3PgYQk5cRd3MFZggibVSygaT3t1g9GvxVukLHDC6OZToinRhGDH5UQ29YtnCgw')
 BINANCE_SECRET_KEY = os.getenv('BINANCE_SECRET_KEY', 'cvlpf2G8qODAQ55iJQ6ZV8BfLzhCocGg5DR14ecDEBRGKKBvffBwii7o3ZhBC2Sk')
 FMP_API_KEY = os.getenv('FMP_API_KEY', 'hbWngJ2fn18YpGJqH6R2lk5vHTx7pv1j')
@@ -100,21 +101,19 @@ def get_brent_oil_price():
         print("Brent Oil (BZ=F) Preis nicht im erwarteten Format gefunden von FMP.")
         return None
 
-# AKTUELLE ÄNDERUNG: Nutzt Twelve Data für historische Brent Oil Preise mit dem korrekten Symbol
-# Das Symbol 'BRENT' sollte jetzt im gebuchten Plan verfügbar sein
+# AKTUELLE ÄNDERUNG: Nutzt Twelve Data für historische Brent Oil Preise mit dem Symbol 'BRNT'
 def get_brent_oil_historical_prices(interval='1min', outputsize=100):
     try:
         # Twelve Data Endpunkt für historische Rohstoffkurse
-        # Symbol 'BRENT' sollte jetzt mit dem gebuchten Plan funktionieren
-        response = requests.get(f"{TWELVEDATA_API_BASE_URL}/time_series?symbol=BRENT&interval={interval}&outputsize={outputsize}&apikey={TWELVEDATA_API_KEY}")
+        # Symbol geändert von BRENT auf BRNT
+        response = requests.get(f"{TWELVEDATA_API_BASE_URL}/time_series?symbol=BRNT&interval={interval}&outputsize={outputsize}&apikey={TWELVEDATA_API_KEY}")
         response.raise_for_status()
         data = response.json()
         if 'values' in data and data['values']:
             close_prices = [float(entry['close']) for entry in data['values']]
             return pd.Series(close_prices).iloc[::-1].reset_index(drop=True)
         else:
-            # Diese Print-Aussage sollte jetzt idealerweise nicht mehr erscheinen
-            print(f"Historische Brent Oil Preise (BRENT) nicht im erwarteten Format gefunden von Twelve Data: {data}")
+            print(f"Historische Brent Oil Preise (BRNT) nicht im erwarteten Format gefunden von Twelve Data: {data}")
             return None
     except requests.exceptions.RequestException as e:
         print(f"Fehler beim Abrufen historischer Brent Oil Preise von Twelve Data: {e}")
@@ -169,8 +168,8 @@ def calculate_trade_levels(current_price, historical_prices, asset_type, params)
 
     # NEUE LOGIK: Zusätzliche Bedingungen für die Signalqualität
     # Indikatoren berechnen, wenn genügend historische Daten vorhanden sind
-    # NEU: Brent Oil wird jetzt auch einbezogen, da die Daten verfügbar sein sollten
-    if historical_prices is not None: # Jetzt ohne den spezifischen asset_type Check
+    # Brent Oil wird jetzt auch einbezogen, da die Daten verfügbar sein sollten (mit dem korrekten Symbol/Plan)
+    if historical_prices is not None:
         all_prices = pd.concat([historical_prices, pd.Series([current_price])]).reset_index(drop=True)
 
         # SMA Crossover
@@ -367,7 +366,8 @@ def get_finance_data():
 
     # --- Brent Oil Daten ---
     brent_oil_price = get_brent_oil_price()
-    # Auch wenn wir wissen, dass die historischen Daten fehlschlagen, übergeben wir 'params' trotzdem
+    # Das Limit für historische Daten wird auch hier dynamisch angepasst, um genug Daten für die Indikatoren zu haben,
+    # SOFERN 'BRNT' jetzt historische Daten liefert.
     brent_oil_historical_prices = get_brent_oil_historical_prices(interval='1min', outputsize=max(100, params['slow_sma_period'] + params['macd_slow_period'] + params['macd_signal_period'] + 10))
     brent_entry, brent_tp, brent_sl, brent_signal, brent_color, brent_icon = calculate_trade_levels(brent_oil_price, brent_oil_historical_prices, "Brent Oil (BBL)", params)
     response_data.append({
