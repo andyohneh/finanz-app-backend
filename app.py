@@ -122,7 +122,7 @@ def get_brent_oil_historical_prices(interval='1min', outputsize=100):
 # --- UNSERE "KI"-LOGIK (MIT SMA Crossover, RSI & MACD & kombiniertem Signal) ---
 def calculate_trade_levels(current_price, historical_prices, asset_type):
     if current_price is None:
-        return None, None, None, "N/A", "gray" # Signal und Farbe hinzugefügt
+        return None, None, None, "N/A", "gray", "question" # Signal, Farbe, Icon hinzugefügt
 
     entry_price = round(current_price, 2)
 
@@ -157,6 +157,7 @@ def calculate_trade_levels(current_price, historical_prices, asset_type):
     macd_crossover_signal = "NEUTRAL" # MACD Crossover (KAUF/VERKAUF)
     final_trade_signal = "HALTEN"
     signal_color = "gray" # Standardfarbe
+    signal_icon = "question" # Standard Icon
 
     rsi_value = None
     macd_line = None
@@ -226,10 +227,12 @@ def calculate_trade_levels(current_price, historical_prices, asset_type):
             if rsi_value is not None and rsi_value < rsi_oversold + 10: # Aus überverkauft oder fast überverkauft
                 final_trade_signal = "KAUFEN"
                 signal_color = "green"
+                signal_icon = "arrow-up" # Icon für Kauf
                 print(f"### {asset_type}: STARKES KAUF Signal (SMA+MACD Crossover, RSI Bestätigung) ###")
             else: # SMA und MACD Kauf, aber RSI neutral
                 final_trade_signal = "KAUFEN"
                 signal_color = "lightgreen" # Etwas schwächeres Grün
+                signal_icon = "arrow-up" # Icon für Kauf
                 print(f"### {asset_type}: KAUF Signal (SMA+MACD Crossover) ###")
         
         # STARKES VERKAUF-Signal
@@ -237,32 +240,39 @@ def calculate_trade_levels(current_price, historical_prices, asset_type):
             if rsi_value is not None and rsi_value > rsi_overbought - 10: # Aus überkauft oder fast überkauft
                 final_trade_signal = "VERKAUFEN"
                 signal_color = "red"
+                signal_icon = "arrow-down" # Icon für Verkauf
                 print(f"### {asset_type}: STARKES VERKAUF Signal (SMA+MACD Crossover, RSI Bestätigung) ###")
             else: # SMA und MACD Verkauf, aber RSI neutral
                 final_trade_signal = "VERKAUFEN"
                 signal_color = "lightcoral" # Etwas schwächeres Rot
+                signal_icon = "arrow-down" # Icon für Verkauf
                 print(f"### {asset_type}: VERKAUF Signal (SMA+MACD Crossover) ###")
 
         # Sonstige HALTEN/VORSICHT-Signale
         elif sma_signal == "TREND_AUF" and macd_line is not None and macd_line > macd_signal_line:
             final_trade_signal = "HALTEN (Aufwärtstrend)"
             signal_color = "darkgreen" # Grünton für Halten in Aufwärtstrend
+            signal_icon = "chevron-up" # Icon für Aufwärtstrend
             print(f"--- {asset_type}: HALTEN Signal (Aufwärtstrend) ---")
         elif sma_signal == "TREND_AB" and macd_line is not None and macd_line < macd_signal_line:
             final_trade_signal = "HALTEN (Abwärtstrend)"
             signal_color = "darkred" # Rotton für Halten in Abwärtstrend
+            signal_icon = "chevron-down" # Icon für Abwärtstrend
             print(f"--- {asset_type}: HALTEN Signal (Abwärtstrend) ---")
         elif rsi_signal_status == "ÜBERKAUFT":
             final_trade_signal = "VORSICHT (Überkauft)"
             signal_color = "orange"
+            signal_icon = "exclamation" # Icon für Vorsicht
             print(f"--- {asset_type}: VORSICHT Signal (Überkauft) ---")
         elif rsi_signal_status == "ÜBERVERKAUFT":
             final_trade_signal = "VORSICHT (Überverkauft)"
             signal_color = "lightblue"
+            signal_icon = "exclamation" # Icon für Vorsicht
             print(f"--- {asset_type}: VORSICHT Signal (Überverkauft) ---")
         else:
             final_trade_signal = "HALTEN (Neutral)"
             signal_color = "gray"
+            signal_icon = "minus" # Icon für Neutral
             print(f"--- {asset_type}: HALTEN Signal (Neutral) ---")
 
 
@@ -294,7 +304,7 @@ def calculate_trade_levels(current_price, historical_prices, asset_type):
     calculated_tp = round(current_price * take_profit_factor, 2)
     calculated_sl = round(current_price * stop_loss_factor, 2)
 
-    return entry_price, calculated_tp, calculated_sl, final_trade_signal, signal_color
+    return entry_price, calculated_tp, calculated_sl, final_trade_signal, signal_color, signal_icon
 
 # --- FLASK-ROUTEN ---
 @app.route('/')
@@ -308,8 +318,7 @@ def get_finance_data():
     # --- Bitcoin Daten ---
     btc_price = get_bitcoin_price()
     btc_historical_prices = get_bitcoin_historical_prices(interval='1h', limit=150)
-    # Hier fangen wir die 5 Rückgabewerte auf
-    btc_entry, btc_tp, btc_sl, btc_signal, btc_color = calculate_trade_levels(btc_price, btc_historical_prices, "Bitcoin (BTC)")
+    btc_entry, btc_tp, btc_sl, btc_signal, btc_color, btc_icon = calculate_trade_levels(btc_price, btc_historical_prices, "Bitcoin (BTC)")
     response_data.append({
         "asset": "Bitcoin (BTC)",
         "currentPrice": f"{btc_price:.2f}" if btc_price is not None else "N/A",
@@ -317,14 +326,14 @@ def get_finance_data():
         "takeProfit": f"{btc_tp:.2f}" if btc_tp is not None else "N/A",
         "stopLoss": f"{btc_sl:.2f}" if btc_sl is not None else "N/A",
         "signal": btc_signal,
-        "color": btc_color # HIER WIRD DIE FARBE DEM DICTIONARY HINZUGEFÜGT
+        "color": btc_color,
+        "icon": btc_icon # NEU: Icon hinzufügen
     })
 
     # --- XAUUSD (Gold) Daten ---
     gold_price = get_gold_price()
     gold_historical_prices = get_gold_historical_prices(interval='1min', outputsize=150)
-    # Hier fangen wir die 5 Rückgabewerte auf
-    gold_entry, gold_tp, gold_sl, gold_signal, gold_color = calculate_trade_levels(gold_price, gold_historical_prices, "XAUUSD")
+    gold_entry, gold_tp, gold_sl, gold_signal, gold_color, gold_icon = calculate_trade_levels(gold_price, gold_historical_prices, "XAUUSD")
     response_data.append({
         "asset": "XAUUSD",
         "currentPrice": f"{gold_price:.2f}" if gold_price is not None else "N/A",
@@ -332,14 +341,14 @@ def get_finance_data():
         "takeProfit": f"{gold_tp:.2f}" if gold_tp is not None else "N/A",
         "stopLoss": f"{gold_sl:.2f}" if gold_sl is not None else "N/A",
         "signal": gold_signal,
-        "color": gold_color # HIER WIRD DIE FARBE DEM DICTIONARY HINZUGEFÜGT
+        "color": gold_color,
+        "icon": gold_icon # NEU: Icon hinzufügen
     })
 
     # --- Brent Oil Daten ---
     brent_oil_price = get_brent_oil_price()
     brent_oil_historical_prices = get_brent_oil_historical_prices(interval='1min', outputsize=150)
-    # Hier fangen wir die 5 Rückgabewerte auf
-    brent_entry, brent_tp, brent_sl, brent_signal, brent_color = calculate_trade_levels(brent_oil_price, brent_oil_historical_prices, "Brent Oil (BBL)")
+    brent_entry, brent_tp, brent_sl, brent_signal, brent_color, brent_icon = calculate_trade_levels(brent_oil_price, brent_oil_historical_prices, "Brent Oil (BBL)")
     response_data.append({
         "asset": "Brent Oil (BBL)",
         "currentPrice": f"{brent_oil_price:.2f}" if brent_oil_price is not None else "N/A",
@@ -347,7 +356,8 @@ def get_finance_data():
         "takeProfit": f"{brent_tp:.2f}" if brent_tp is not None else "N/A",
         "stopLoss": f"{brent_sl:.2f}" if brent_sl is not None else "N/A",
         "signal": brent_signal,
-        "color": brent_color # HIER WIRD DIE FARBE DEM DICTIONARY HINZUGEFÜGT
+        "color": brent_color,
+        "icon": brent_icon # NEU: Icon hinzufügen
     })
     return jsonify(response_data)
 
