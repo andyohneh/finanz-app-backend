@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request # 'request' neu importieren
+from flask import Flask, jsonify, request 
 from flask_cors import CORS
 import requests
 import os
@@ -45,7 +45,7 @@ def get_bitcoin_historical_prices(interval='1h', limit=150):
         print(f"Fehler beim Abrufen historischer Bitcoin-Preise: {e}")
         return None
     except Exception as e:
-        print(f"Unbekannter Fehler beim Abrufen historischer Bitcoin-PZITRONESreise: {e}")
+        print(f"Unbekannter Fehler beim Abrufen historischer Bitcoin-Preise: {e}")
         return None
 
 def get_gold_price():
@@ -100,9 +100,12 @@ def get_brent_oil_price():
         print("Brent Oil (BZ=F) Preis nicht im erwarteten Format gefunden von FMP.")
         return None
 
-# Nutzt Twelve Data für historische Brent Oil Preise (symbol BRENT ist nicht im Free Tier)
+# AKTUELLE ÄNDERUNG: Nutzt Twelve Data für historische Brent Oil Preise mit dem korrekten Symbol
+# Das Symbol 'BRENT' sollte jetzt im gebuchten Plan verfügbar sein
 def get_brent_oil_historical_prices(interval='1min', outputsize=100):
     try:
+        # Twelve Data Endpunkt für historische Rohstoffkurse
+        # Symbol 'BRENT' sollte jetzt mit dem gebuchten Plan funktionieren
         response = requests.get(f"{TWELVEDATA_API_BASE_URL}/time_series?symbol=BRENT&interval={interval}&outputsize={outputsize}&apikey={TWELVEDATA_API_KEY}")
         response.raise_for_status()
         data = response.json()
@@ -110,6 +113,7 @@ def get_brent_oil_historical_prices(interval='1min', outputsize=100):
             close_prices = [float(entry['close']) for entry in data['values']]
             return pd.Series(close_prices).iloc[::-1].reset_index(drop=True)
         else:
+            # Diese Print-Aussage sollte jetzt idealerweise nicht mehr erscheinen
             print(f"Historische Brent Oil Preise (BRENT) nicht im erwarteten Format gefunden von Twelve Data: {data}")
             return None
     except requests.exceptions.RequestException as e:
@@ -120,7 +124,7 @@ def get_brent_oil_historical_prices(interval='1min', outputsize=100):
         return None
 
 # --- UNSERE "KI"-LOGIK (MIT SMA Crossover, RSI & MACD & kombiniertem Signal) ---
-def calculate_trade_levels(current_price, historical_prices, asset_type, params): # params hinzugefügt
+def calculate_trade_levels(current_price, historical_prices, asset_type, params):
     if current_price is None:
         return None, None, None, "N/A", "gray", "question"
 
@@ -164,9 +168,9 @@ def calculate_trade_levels(current_price, historical_prices, asset_type, params)
     macd_signal_line = None
 
     # NEUE LOGIK: Zusätzliche Bedingungen für die Signalqualität
-    # Nur Indikatoren berechnen, wenn genügend historische Daten vorhanden sind
-    # und das Asset die API-Limits nicht verletzt (aktuell BTC und XAUUSD)
-    if historical_prices is not None and asset_type in ["Bitcoin (BTC)", "XAUUSD"]:
+    # Indikatoren berechnen, wenn genügend historische Daten vorhanden sind
+    # NEU: Brent Oil wird jetzt auch einbezogen, da die Daten verfügbar sein sollten
+    if historical_prices is not None: # Jetzt ohne den spezifischen asset_type Check
         all_prices = pd.concat([historical_prices, pd.Series([current_price])]).reset_index(drop=True)
 
         # SMA Crossover
