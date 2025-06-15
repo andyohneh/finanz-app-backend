@@ -84,6 +84,26 @@ def get_gold_historical_prices(interval='1min', outputsize=150):
         print(f"Unbekannter Fehler beim Abrufen historischer XAU/USD Preise: {e}")
         return None
 
+# NEUE FUNKTION: API-Nutzung von Twelve Data abrufen
+def get_api_usage():
+    try:
+        # Endpunkt für API-Nutzung (https://twelvedata.com/docs#usage)
+        response = requests.get(f"{TWELVEDATA_API_BASE_URL}/usage?apikey={TWELVEDATA_API_KEY}")
+        response.raise_for_status()
+        data = response.json()
+        return {
+            'total_requests': data.get('total_requests', 'N/A'),
+            'usage_today': data.get('usage_today', 'N/A'),
+            'usage_limit': data.get('usage_limit', 'N/A'),
+            'reset_in_seconds': data.get('reset_in_seconds', 'N/A')
+        }
+    except requests.exceptions.RequestException as e:
+        print(f"Fehler beim Abrufen der API-Nutzung von Twelve Data: {e}")
+        return None
+    except Exception as e:
+        print(f"Unbekannter Fehler beim Abrufen der API-Nutzung: {e}")
+        return None
+
 # --- UNSERE "KI"-LOGIK (MIT SMA Crossover, RSI & MACD & kombiniertem Signal) ---
 def calculate_trade_levels(current_price, historical_prices, asset_type, params):
     if current_price is None:
@@ -112,7 +132,7 @@ def calculate_trade_levels(current_price, historical_prices, asset_type, params)
     macd_slow_period = params.get('macd_slow_period', 26)
     macd_signal_period = params.get('macd_signal_period', 9)
     
-    # NEU: Zusätzlicher Parameter für Signalstärke/Volatilitätsfilter
+    # Zusätzlicher Parameter für Signalstärke/Volatilitätsfilter
     min_price_deviation_from_sma = params.get('min_price_deviation_from_sma', 0.002) # 0.2% Abweichung vom langsamen SMA
     
     # Initialisiere Signale
@@ -126,7 +146,7 @@ def calculate_trade_levels(current_price, historical_prices, asset_type, params)
     rsi_value = None
     macd_line = None
     macd_signal_line = None
-    slow_sma_value = None # Muss hier initialisiert werden, da es außerhalb des if-Blocks verwendet wird
+    slow_sma_value = None 
 
     # Indikatoren nur für Bitcoin und XAUUSD berechnen, wenn genügend historische Daten vorhanden sind
     if historical_prices is not None and asset_type in ["Bitcoin (BTC)", "XAUUSD"]:
@@ -185,7 +205,6 @@ def calculate_trade_levels(current_price, historical_prices, asset_type, params)
 
         # --- Kombinierte Swing-Trading-Strategie zur finalen Signalgenerierung ---
         # Priorisiere klare Signale und nutze andere Indikatoren zur Bestätigung
-        # NEU: Zusätzlicher Filter für "Volatilität" / Abstand vom SMA
         
         is_above_sma_deviation = (current_price > slow_sma_value * (1 + min_price_deviation_from_sma)) if slow_sma_value is not None else False
         is_below_sma_deviation = (current_price < slow_sma_value * (1 - min_price_deviation_from_sma)) if slow_sma_value is not None else False
@@ -194,7 +213,7 @@ def calculate_trade_levels(current_price, historical_prices, asset_type, params)
         # KAUFEN, wenn (SMA-Kauf ODER MACD-Kauf) UND RSI nicht überkauft ist UND Preis über langem SMA (+ Abweichung)
         if (sma_signal == "KAUF" or macd_crossover_signal == "KAUF") and \
            rsi_signal_status != "ÜBERKAUFT" and \
-           is_above_sma_deviation: # NEU: Zusätzliche Bedingung
+           is_above_sma_deviation: # Zusätzliche Bedingung
             final_trade_signal = "KAUFEN"
             signal_color = "green"
             signal_icon = "arrow-up"
@@ -204,7 +223,7 @@ def calculate_trade_levels(current_price, historical_prices, asset_type, params)
         # VERKAUFEN, wenn (SMA-Verkauf ODER MACD-Verkauf) UND RSI nicht überverkauft ist UND Preis unter langem SMA (- Abweichung)
         elif (sma_signal == "VERKAUF" or macd_crossover_signal == "VERKAUF") and \
              rsi_signal_status != "ÜBERVERKAUFT" and \
-             is_below_sma_deviation: # NEU: Zusätzliche Bedingung
+             is_below_sma_deviation: # Zusätzliche Bedingung
             final_trade_signal = "VERKAUFEN"
             signal_color = "red"
             signal_icon = "arrow-down"
@@ -237,15 +256,15 @@ def calculate_trade_levels(current_price, historical_prices, asset_type, params)
         # Anpassung der Take Profit / Stop Loss Faktoren basierend auf dem finalen Signal
         if final_trade_signal == "KAUFEN":
             if asset_type == "XAUUSD":
-                take_profit_factor = 1.015 # Noch aggressiver für starke Signale
-                stop_loss_factor = 0.994 # Noch enger
+                take_profit_factor = 1.015 
+                stop_loss_factor = 0.994 
             elif asset_type == "Bitcoin (BTC)":
                 take_profit_factor = 1.07
                 stop_loss_factor = 0.96
         elif final_trade_signal == "VERKAUFEN": # Für Short-Positionen
             if asset_type == "XAUUSD":
-                take_profit_factor = 0.988 # Noch aggressiver für starke Signale
-                stop_loss_factor = 1.004  # Noch enger
+                take_profit_factor = 0.988 
+                stop_loss_factor = 1.004  
             elif asset_type == "Bitcoin (BTC)":
                 take_profit_factor = 0.94
                 stop_loss_factor = 1.05
@@ -270,7 +289,7 @@ def home():
 
 @app.route('/api/finance_data')
 def get_finance_data():
-    response_data = []
+    response_data = {} # Dies ist ein Dictionary, um API-Nutzung hinzuzufügen
 
     # Parameter aus der URL auslesen
     params = {
@@ -282,16 +301,18 @@ def get_finance_data():
         'macd_fast_period': int(request.args.get('macd_fast_period', 12)),
         'macd_slow_period': int(request.args.get('macd_slow_period', 26)),
         'macd_signal_period': int(request.args.get('macd_signal_period', 9)),
-        'min_price_deviation_from_sma': float(request.args.get('min_price_deviation_from_sma', 0.002)), # Neu: Standard 0.2%
+        'min_price_deviation_from_sma': float(request.args.get('min_price_deviation_from_sma', 0.002)), 
     }
     print(f"Verwendete Indikator-Parameter: {params}")
 
+    # Daten für Assets
+    assets_data = [] # Liste für die Asset-spezifischen Daten
 
     # --- Bitcoin Daten ---
     btc_price = get_bitcoin_price()
     btc_historical_prices = get_bitcoin_historical_prices(interval='1h', limit=max(150, params['slow_sma_period'] + params['macd_slow_period'] + params['macd_signal_period'] + 10))
     btc_entry, btc_tp, btc_sl, btc_signal, btc_color, btc_icon = calculate_trade_levels(btc_price, btc_historical_prices, "Bitcoin (BTC)", params)
-    response_data.append({
+    assets_data.append({
         "asset": "Bitcoin (BTC)",
         "currentPrice": f"{btc_price:.2f}" if btc_price is not None else "N/A",
         "entry": f"{btc_entry:.2f}" if btc_entry is not None else "N/A",
@@ -306,7 +327,7 @@ def get_finance_data():
     gold_price = get_gold_price()
     gold_historical_prices = get_gold_historical_prices(interval='1min', outputsize=max(150, params['slow_sma_period'] + params['macd_slow_period'] + params['macd_signal_period'] + 10))
     gold_entry, gold_tp, gold_sl, gold_signal, gold_color, gold_icon = calculate_trade_levels(gold_price, gold_historical_prices, "XAUUSD", params)
-    response_data.append({
+    assets_data.append({
         "asset": "XAUUSD",
         "currentPrice": f"{gold_price:.2f}" if gold_price is not None else "N/A",
         "entry": f"{gold_entry:.2f}" if gold_entry is not None else "N/A",
@@ -316,6 +337,12 @@ def get_finance_data():
         "color": gold_color,
         "icon": gold_icon
     })
+    
+    # API-Nutzung abrufen und zu response_data hinzufügen
+    api_usage = get_api_usage()
+
+    response_data['assets'] = assets_data # Asset-Daten unter 'assets' key
+    response_data['api_usage'] = api_usage # API-Nutzung unter 'api_usage' key
 
     return jsonify(response_data)
 
