@@ -86,19 +86,20 @@ def get_gold_historical_prices(interval='1min', outputsize=150):
 
 def get_brent_oil_price():
     try:
-        response = requests.get(f"{FMP_API_BASE_URL}/quote/BZ=F?apikey={FMP_API_KEY}")
+        # Twelve Data Endpunkt für aktuellen Preis (Symbol BRNT)
+        response = requests.get(f"{TWELVEDATA_API_BASE_URL}/price?symbol=BRNT&apikey={TWELVEDATA_API_KEY}")
         response.raise_for_status()
         data = response.json()
-        if data and isinstance(data, list) and len(data) > 0 and 'price' in data[0]:
-            return float(data[0]['price'])
+        if 'price' in data:
+            return float(data['price'])
         else:
-            print("Brent Oil (BZ=F) Preis nicht im erwarteten Format gefunden oder API-Antwort leer von FMP.")
+            print(f"Aktueller Brent Oil Preis (BRNT) nicht im erwarteten Format gefunden von Twelve Data: {data}")
             return None
     except requests.exceptions.RequestException as e:
-        print(f"Fehler beim Abrufen des Brent Oil Preises von FMP: {e}")
+        print(f"Fehler beim Abrufen des aktuellen Brent Oil Preises von Twelve Data: {e}")
         return None
-    except KeyError:
-        print("Brent Oil (BZ=F) Preis nicht im erwarteten Format gefunden von FMP.")
+    except Exception as e:
+        print(f"Unbekannter Fehler beim Abrufen des aktuellen Brent Oil Preises: {e}")
         return None
 
 # AKTUELLE ÄNDERUNG: Nutzt Twelve Data für historische Brent Oil Preise mit dem Symbol 'BRNT'
