@@ -87,15 +87,21 @@ def get_gold_historical_prices(interval='1min', outputsize=150):
 # NEUE FUNKTION: API-Nutzung von Twelve Data abrufen
 def get_api_usage():
     try:
-        # Endpunkt für API-Nutzung (https://twelvedata.com/docs#usage)
         response = requests.get(f"{TWELVEDATA_API_BASE_URL}/usage?apikey={TWELVEDATA_API_KEY}")
         response.raise_for_status()
         data = response.json()
+
+        # Korrigiert: Feldnamen an die tatsächliche API-Antwort anpassen
         return {
-            'total_requests': data.get('total_requests', 'N/A'),
-            'usage_today': data.get('usage_today', 'N/A'),
-            'usage_limit': data.get('usage_limit', 'N/A'),
-            'reset_in_seconds': data.get('reset_in_seconds', 'N/A')
+            'current_usage': data.get('current_usage', 'N/A'), # Tatsächlich zurückgegeben
+            'plan_limit': data.get('plan_limit', 'N/A'),       # Tatsächlich zurückgegeben
+            'timestamp': data.get('timestamp', 'N/A'),         # Tatsächlich zurückgegeben
+            'plan_category': data.get('plan_category', 'N/A'), # Tatsächlich zurückgegeben
+            # Diese Felder sind in der Grow-Plan /usage Antwort NICHT enthalten, daher entfernen wir sie oder setzen sie auf N/A
+            'total_requests': 'N/A', # Nicht in dieser Antwort enthalten
+            'usage_today': 'N/A',    # Nicht in dieser Antwort enthalten
+            'usage_limit': data.get('plan_limit', 'N/A'), # Wenn wir es für Kompatibilität brauchen, nutze plan_limit
+            'reset_in_seconds': 60 # Platzhalter für Minutenlimit-Reset (1 Minute)
         }
     except requests.exceptions.RequestException as e:
         print(f"Fehler beim Abrufen der API-Nutzung von Twelve Data: {e}")
