@@ -295,7 +295,8 @@ def home():
 
 @app.route('/api/finance_data')
 def get_finance_data():
-    response_data = {} # Dies ist ein Dictionary, um API-Nutzung hinzuzufügen
+    # response_data ist jetzt direkt das Assets-Array, nicht mehr ein umhüllendes Dict
+    assets_data = [] 
 
     # Parameter aus der URL auslesen
     params = {
@@ -310,9 +311,6 @@ def get_finance_data():
         'min_price_deviation_from_sma': float(request.args.get('min_price_deviation_from_sma', 0.002)), 
     }
     print(f"Verwendete Indikator-Parameter: {params}")
-
-    # Daten für Assets
-    assets_data = [] # Liste für die Asset-spezifischen Daten
 
     # --- Bitcoin Daten ---
     btc_price = get_bitcoin_price()
@@ -344,13 +342,9 @@ def get_finance_data():
         "icon": gold_icon
     })
     
-    # API-Nutzung abrufen
-    api_usage = get_api_usage()
-
-    response_data['assets'] = assets_data # Asset-Daten unter 'assets' key
-    response_data['api_usage'] = api_usage # API-Nutzung unter 'api_usage' key
-
-    return jsonify(response_data)
+    # Der API-Nutzungs-Code ist jetzt komplett entfernt.
+    # Es wird direkt das assets_data-Array zurückgegeben.
+    return jsonify(assets_data)
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
