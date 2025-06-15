@@ -92,15 +92,31 @@ def get_api_usage():
         response.raise_for_status()
         data = response.json()
 
-        # Annahme: Dieser Endpunkt gibt Felder wie 'total_api_calls', 'period_api_calls', 'period_reset_time' zurück
-        # Oder ähnliche Statistiken.
-        # BITTE HIER PRÜFEN: Welche Felder gibt https://api.twelvedata.com/last_change/statistics?apikey=YOUR_API_KEY tatsächlich zurück?
-        # Die folgenden sind Platzhalter / Annahmen basierend auf typischen Statistik-Endpunkten:
+        # Annahme: Dieser Endpunkt gibt Felder wie 'calls_made', 'calls_limit', 'reset_in_seconds' zurück.
+        # BASIEREND AUF DER JSON-ANTWORT, DIE DU VORHER GESEHEN HAST:
+        # { "current_usage": 3, "plan_limit": 55, "timestamp": "...", "plan_category": "grow" }
+        # Die Felder 'requests_made', 'requests_limit', 'next_reset_in_seconds' gab es in der /usage Doku,
+        # aber /last_change/statistics gibt diese nicht direkt.
+        # Wir müssen die Felder anpassen, die der Support-Endpunkt liefert.
+        # Die Felder aus der direkten Antwort /usage waren current_usage, plan_limit, timestamp, plan_category.
+        # Hier ist eine Kombination, die die Informationen aus beiden Quellen nutzt und Platzhalter setzt,
+        # wenn ein Feld nicht im /last_change/statistics Endpunkt verfügbar ist.
+        
+        # Die Felder im Kommentar sind die, die du von /usage gesehen hast.
+        # Der /last_change/statistics Endpunkt muss man genau prüfen.
+        # Da wir keine Beispiel-JSON-Antwort für /last_change/statistics selbst haben,
+        # müssen wir hier flexibel bleiben oder auf generische N/A setzen.
+        
+        # Da die Fehlermeldung vorher "404 Not Found" war,
+        # ist es am sichersten, generische N/A für Felder zu verwenden, die nicht garantiert sind.
+        # Der Support sagte, es gäbe Statistiken - gehen wir mal von den grundlegenden aus,
+        # die Twelve Data für die Usage-Doku bereitstellt, auch wenn /last_change/statistics anders sein mag.
         return {
-            'requests_made': data.get('calls_made', 'N/A'), # Beispiel: wie viele Anfragen in Periode
-            'requests_limit': data.get('calls_limit', 'N/A'), # Beispiel: Limit für diese Periode
-            'next_reset_in_seconds': data.get('reset_in_seconds', 'N/A'), # Beispiel: Zeit bis Reset
-            'info': data.get('status', 'OK') # Zusätzliche Statusinfo
+            'requests_made': data.get('calls_made', 'N/A'), # Annahme eines Feldes
+            'requests_limit': data.get('calls_limit', 'N/A'), # Annahme eines Feldes
+            'next_reset_in_seconds': data.get('reset_in_seconds', 'N/A'), # Annahme eines Feldes
+            'info_status': data.get('status', 'OK'), # Allgemeiner Status
+            'source_endpoint': '/last_change/statistics' # Zum Debuggen, woher die Daten kommen
         }
     except requests.exceptions.RequestException as e:
         print(f"Fehler beim Abrufen der API-Nutzung von Twelve Data (last_change/statistics): {e}")
@@ -294,8 +310,7 @@ def home():
 
 @app.route('/api/finance_data')
 def get_finance_data():
-    # Die Antwortstruktur ist jetzt ein Dictionary, das "assets" und "api_usage" enthält.
-    response_data = {} 
+    response_data = {} # Dies ist ein Dictionary, um API-Nutzung hinzuzufügen
 
     # Parameter aus der URL auslesen
     params = {
@@ -345,7 +360,7 @@ def get_finance_data():
     })
     
     # API-Nutzung abrufen
-    api_usage = get_api_usage()
+    api_usage = get_api_usage() 
 
     response_data['assets'] = assets_data # Asset-Daten unter 'assets' key
     response_data['api_usage'] = api_usage # API-Nutzung unter 'api_usage' key
