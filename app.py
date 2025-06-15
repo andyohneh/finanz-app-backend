@@ -84,44 +84,9 @@ def get_gold_historical_prices(interval='1min', outputsize=150):
         print(f"Unbekannter Fehler beim Abrufen historischer XAU/USD Preise: {e}")
         return None
 
-def get_brent_oil_price():
-    try:
-        # Twelve Data Endpunkt für aktuellen Preis (Symbol BRNT)
-        response = requests.get(f"{TWELVEDATA_API_BASE_URL}/price?symbol=BRNT&apikey={TWELVEDATA_API_KEY}")
-        response.raise_for_status()
-        data = response.json()
-        if 'price' in data:
-            return float(data['price'])
-        else:
-            print(f"Aktueller Brent Oil Preis (BRNT) nicht im erwarteten Format gefunden von Twelve Data: {data}")
-            return None
-    except requests.exceptions.RequestException as e:
-        print(f"Fehler beim Abrufen des aktuellen Brent Oil Preises von Twelve Data: {e}")
-        return None
-    except Exception as e:
-        print(f"Unbekannter Fehler beim Abrufen des aktuellen Brent Oil Preises: {e}")
-        return None
-
-# AKTUELLE ÄNDERUNG: Nutzt Twelve Data für historische Brent Oil Preise mit dem Symbol 'BRNT'
-def get_brent_oil_historical_prices(interval='1min', outputsize=100):
-    try:
-        # Twelve Data Endpunkt für historische Rohstoffkurse
-        # Symbol geändert von BRENT auf BRNT
-        response = requests.get(f"{TWELVEDATA_API_BASE_URL}/time_series?symbol=BRNT&interval={interval}&outputsize={outputsize}&apikey={TWELVEDATA_API_KEY}")
-        response.raise_for_status()
-        data = response.json()
-        if 'values' in data and data['values']:
-            close_prices = [float(entry['close']) for entry in data['values']]
-            return pd.Series(close_prices).iloc[::-1].reset_index(drop=True)
-        else:
-            print(f"Historische Brent Oil Preise (BRNT) nicht im erwarteten Format gefunden von Twelve Data: {data}")
-            return None
-    except requests.exceptions.RequestException as e:
-        print(f"Fehler beim Abrufen historischer Brent Oil Preise von Twelve Data: {e}")
-        return None
-    except Exception as e:
-        print(f"Unbekannter Fehler beim Abrufen historischer Brent Oil Preise von Twelve Data: {e}")
-        return None
+# --- Entfernte Funktionen für Brent Oil ---
+# def get_brent_oil_price(): ...
+# def get_brent_oil_historical_prices(): ...
 
 # --- UNSERE "KI"-LOGIK (MIT SMA Crossover, RSI & MACD & kombiniertem Signal) ---
 def calculate_trade_levels(current_price, historical_prices, asset_type, params):
@@ -130,20 +95,19 @@ def calculate_trade_levels(current_price, historical_prices, asset_type, params)
 
     entry_price = round(current_price, 2)
 
-    # Standard-Faktoren (Fallback)
+    # Standard-Faktoren (Fallback für Assets ohne Indikatoren)
     take_profit_factor = 1.01
     stop_loss_factor = 0.99
 
     # Spezifische Standard-Faktoren für jedes Asset, wenn keine Indikatoren berechnet werden können
+    # Brent Oil ist jetzt aus der Indikatoren-Berechnung ausgeschlossen
     if asset_type == "XAUUSD":
         take_profit_factor = 1.005
         stop_loss_factor = 0.998
     elif asset_type == "Bitcoin (BTC)":
         take_profit_factor = 1.03
         stop_loss_factor = 0.98
-    elif asset_type == "Brent Oil (BBL)":
-        take_profit_factor = 1.015
-        stop_loss_factor = 0.99
+    # Entfernte 'elif asset_type == "Brent Oil (BBL)"' Block
 
     # Indikator-Parameter von params übernehmen oder Standardwerte verwenden
     fast_sma_period = params.get('fast_sma_period', 10)
@@ -167,10 +131,8 @@ def calculate_trade_levels(current_price, historical_prices, asset_type, params)
     macd_line = None
     macd_signal_line = None
 
-    # NEUE LOGIK: Zusätzliche Bedingungen für die Signalqualität
-    # Indikatoren berechnen, wenn genügend historische Daten vorhanden sind
-    # Brent Oil wird jetzt auch einbezogen, da die Daten verfügbar sein sollten (mit dem korrekten Symbol/Plan)
-    if historical_prices is not None:
+    # NEUE LOGIK: Indikatoren nur für Bitcoin und XAUUSD berechnen
+    if historical_prices is not None and asset_type in ["Bitcoin (BTC)", "XAUUSD"]:
         all_prices = pd.concat([historical_prices, pd.Series([current_price])]).reset_index(drop=True)
 
         # SMA Crossover
@@ -228,34 +190,22 @@ def calculate_trade_levels(current_price, historical_prices, asset_type, params)
         # Priorisiere klare Signale und nutze andere Indikatoren zur Bestätigung
 
         # STARKES KAUF-Signal (striktere Bedingungen)
-        # KAUFEN, wenn SMA-Kauf ODER MACD-Kauf UND RSI nicht überkauft ist
-        if (sma_signal == "KAUF" or macd_crossover_signal == "KAUF") and rsi_signal_status != "ÜBERKAUFT":
-            # Zusätzliche Überprüfung: Preis muss über langem SMA sein für starke Kauf-Bestätigung
-            if current_price > slow_sma_value:
-                final_trade_signal = "KAUFEN"
-                signal_color = "green"
-                signal_icon = "arrow-up"
-                print(f"### {asset_type}: STARKES KAUF Signal (Kombiniert) ###")
-            else:
-                final_trade_signal = "HALTEN (Kauf abwarten)" # Preis nicht stark genug
-                signal_color = "gray"
-                signal_icon = "eye" # Auge-Icon für Beobachtung
-
-        # STARKES VERKAUF-Signal (striktere Bedingungen)
-        # VERKAUFEN, wenn SMA-Verkauf ODER MACD-Verkauf UND RSI nicht überverkauft ist
-        elif (sma_signal == "VERKAUF" or macd_crossover_signal == "VERKAUF") and rsi_signal_status != "ÜBERVERKAUFT":
-            # Zusätzliche Überprüfung: Preis muss unter langem SMA sein für starke Verkauf-Bestätigung
-            if current_price < slow_sma_value:
-                final_trade_signal = "VERKAUFEN"
-                signal_color = "red"
-                signal_icon = "arrow-down"
-                print(f"### {asset_type}: STARKES VERKAUF Signal (Kombiniert) ###")
-            else:
-                final_trade_signal = "HALTEN (Verkauf abwarten)" # Preis nicht schwach genug
-                signal_color = "gray"
-                signal_icon = "eye" # Auge-Icon für Beobachtung
+        # KAUFEN, wenn (SMA-Kauf ODER MACD-Kauf) UND RSI nicht überkauft ist UND Preis über langem SMA
+        if (sma_signal == "KAUF" or macd_crossover_signal == "KAUF") and rsi_signal_status != "ÜBERKAUFT" and current_price > slow_sma_value:
+            final_trade_signal = "KAUFEN"
+            signal_color = "green"
+            signal_icon = "arrow-up"
+            print(f"### {asset_type}: STARKES KAUF Signal (Kombiniert) ###")
         
-        # NEUTRAL / HALTEN
+        # STARKES VERKAUF-Signal (striktere Bedingungen)
+        # VERKAUFEN, wenn (SMA-Verkauf ODER MACD-Verkauf) UND RSI nicht überverkauft ist UND Preis unter langem SMA
+        elif (sma_signal == "VERKAUF" or macd_crossover_signal == "VERKAUF") and rsi_signal_status != "ÜBERVERKAUFT" and current_price < slow_sma_value:
+            final_trade_signal = "VERKAUFEN"
+            signal_color = "red"
+            signal_icon = "arrow-down"
+            print(f"### {asset_type}: STARKES VERKAUF Signal (Kombiniert) ###")
+
+        # HALTEN / VORSICHT-Signale, wenn keine klaren Kauf/Verkauf-Signale
         else:
             if sma_signal == "TREND_AUF":
                 final_trade_signal = "HALTEN (Aufwärtstrend)"
@@ -282,26 +232,27 @@ def calculate_trade_levels(current_price, historical_prices, asset_type, params)
         # Anpassung der Take Profit / Stop Loss Faktoren basierend auf dem finalen Signal
         if final_trade_signal == "KAUFEN":
             if asset_type == "XAUUSD":
-                take_profit_factor = 1.012 # Etwas aggressiver
-                stop_loss_factor = 0.995 # Etwas enger
+                take_profit_factor = 1.012 
+                stop_loss_factor = 0.995 
             elif asset_type == "Bitcoin (BTC)":
                 take_profit_factor = 1.06
                 stop_loss_factor = 0.965
         elif final_trade_signal == "VERKAUFEN": # Für Short-Positionen
             if asset_type == "XAUUSD":
-                take_profit_factor = 0.990 # Etwas aggressiver
-                stop_loss_factor = 1.003  # Etwas enger
+                take_profit_factor = 0.990 
+                stop_loss_factor = 1.003  
             elif asset_type == "Bitcoin (BTC)":
                 take_profit_factor = 0.95
                 stop_loss_factor = 1.04
-        else: # HALTEN oder VORSICHT
+        else: # HALTEN oder VORSICHT (neutralere Faktoren)
             if asset_type == "XAUUSD":
                 take_profit_factor = 1.003
                 stop_loss_factor = 0.999
             elif asset_type == "Bitcoin (BTC)":
                 take_profit_factor = 1.015
                 stop_loss_factor = 0.988
-            # Behalte die initialen Faktoren, wenn keine Indikatoren berechnet werden
+            # Für andere Assets ohne Indikatoren (aktuell keine mehr), bleiben die initialen Faktoren
+
 
     # Berechnung der finalen TP/SL Werte
     calculated_tp = round(current_price * take_profit_factor, 2)
@@ -319,7 +270,6 @@ def get_finance_data():
     response_data = []
 
     # Parameter aus der URL auslesen
-    # Convertiere zu int, wenn vorhanden, sonst Standardwert
     params = {
         'fast_sma_period': int(request.args.get('fast_sma_period', 10)),
         'slow_sma_period': int(request.args.get('slow_sma_period', 20)),
@@ -330,13 +280,11 @@ def get_finance_data():
         'macd_slow_period': int(request.args.get('macd_slow_period', 26)),
         'macd_signal_period': int(request.args.get('macd_signal_period', 9)),
     }
-    print(f"Verwendete Indikator-Parameter: {params}") # Zum Debuggen in den Logs
+    print(f"Verwendete Indikator-Parameter: {params}")
 
 
     # --- Bitcoin Daten ---
     btc_price = get_bitcoin_price()
-    # Erhöht das Limit der historischen Daten, um sicherzustellen, dass genügend Daten für alle Indikatoren vorhanden sind
-    # MACD benötigt die längste Historie (slow_period + signal_period + ca. 10 Puffer)
     btc_historical_prices = get_bitcoin_historical_prices(interval='1h', limit=max(150, params['slow_sma_period'] + params['macd_slow_period'] + params['macd_signal_period'] + 10))
     btc_entry, btc_tp, btc_sl, btc_signal, btc_color, btc_icon = calculate_trade_levels(btc_price, btc_historical_prices, "Bitcoin (BTC)", params)
     response_data.append({
@@ -365,22 +313,12 @@ def get_finance_data():
         "icon": gold_icon
     })
 
-    # --- Brent Oil Daten ---
-    brent_oil_price = get_brent_oil_price()
-    # Das Limit für historische Daten wird auch hier dynamisch angepasst, um genug Daten für die Indikatoren zu haben,
-    # SOFERN 'BRNT' jetzt historische Daten liefert.
-    brent_oil_historical_prices = get_brent_oil_historical_prices(interval='1min', outputsize=max(100, params['slow_sma_period'] + params['macd_slow_period'] + params['macd_signal_period'] + 10))
-    brent_entry, brent_tp, brent_sl, brent_signal, brent_color, brent_icon = calculate_trade_levels(brent_oil_price, brent_oil_historical_prices, "Brent Oil (BBL)", params)
-    response_data.append({
-        "asset": "Brent Oil (BBL)",
-        "currentPrice": f"{brent_oil_price:.2f}" if brent_oil_price is not None else "N/A",
-        "entry": f"{brent_entry:.2f}" if brent_entry is not None else "N/A",
-        "takeProfit": f"{brent_tp:.2f}" if brent_tp is not None else "N/A",
-        "stopLoss": f"{brent_sl:.2f}" if brent_sl is not None else "N/A",
-        "signal": brent_signal,
-        "color": brent_color,
-        "icon": brent_icon
-    })
+    # --- Entfernte Brent Oil Daten ---
+    # brent_oil_price = get_brent_oil_price()
+    # brent_oil_historical_prices = get_brent_oil_historical_prices(interval='1min', outputsize=max(100, params['slow_sma_period'] + params['macd_slow_period'] + params['macd_signal_period'] + 10))
+    # brent_entry, brent_tp, brent_sl, brent_signal, brent_color, brent_icon = calculate_trade_levels(brent_oil_price, brent_oil_historical_prices, "Brent Oil (BBL)", params)
+    # response_data.append({ ... })
+
     return jsonify(response_data)
 
 if __name__ == '__main__':
