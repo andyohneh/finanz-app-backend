@@ -34,28 +34,42 @@ def add_features(df):
     return df
 
 def get_live_data_for_features(symbol, interval='1min', outputsize=75):
-    """Holt genügend Live-Daten von der API, um die Features berechnen zu können."""
+    """Holt genügend Live-Daten von der API und loggt detaillierte Fehler."""
+    print(f"Versuche, Live-Daten für {symbol} abzurufen...")
     try:
         api_symbol = symbol.replace('USD', '/USD')
         url = f"https://api.twelvedata.com/time_series?symbol={api_symbol}&interval={interval}&outputsize={outputsize}&apikey={TWELVEDATA_API_KEY}"
-        response = requests.get(url, timeout=10)
+        
+        response = requests.get(url, timeout=15) # Timeout leicht erhöht
+        
+        # Überprüfen, ob die Anfrage an sich erfolgreich war (Status-Code 200-299)
         response.raise_for_status()
+        
         data = response.json()
-        if data.get('status') == 'ok' and 'values' in data:
+        
+        # Detaillierte Prüfung der Antwort
+        if data.get('status') == 'ok' and 'values' in data and len(data['values']) > 0:
+            print(f"Erfolgreich {len(data['values'])} Datenpunkte von API für {symbol} erhalten.")
             df = pd.DataFrame(data['values'])
             df = df.rename(columns={'datetime': 'timestamp'})
             
-            # --- HIER IST DIE KORREKTUR ---
-            # Wir prüfen, ob 'volume' fehlt, und fügen es als 0 hinzu wenn nötig.
             if 'volume' not in df.columns:
                 df['volume'] = 0.0
-            # --------------------------------
-
-            # Jetzt können wir die Typen sicher konvertieren
+                
             df = df.astype({'open': 'float', 'high': 'float', 'low': 'float', 'close': 'float', 'volume': 'float'})
             return df.iloc[::-1].reset_index(drop=True)
+        else:
+            # Wenn der Status nicht 'ok' ist, loggen wir die ganze Antwort
+            print(f"!!! Unerwartete, aber gültige JSON-Antwort für {symbol}:")
+            print(response.json())
+            return None
+
+    except requests.exceptions.HTTPError as http_err:
+        print(f"!!! HTTP-Fehler für {symbol}: {http_err}")
+        print(f"Antwort-Text: {response.text}")
     except Exception as e:
-        print(f"Fehler beim Abrufen der Live-Daten für {symbol}: {e}")
+        print(f"!!! Allgemeiner Fehler beim Abrufen der Live-Daten für {symbol}: {e}")
+    
     return None
 
 def load_models():
