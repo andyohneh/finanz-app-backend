@@ -38,12 +38,20 @@ def get_live_data_for_features(symbol, interval='1min', outputsize=75):
     try:
         api_symbol = symbol.replace('USD', '/USD')
         url = f"https://api.twelvedata.com/time_series?symbol={api_symbol}&interval={interval}&outputsize={outputsize}&apikey={TWELVEDATA_API_KEY}"
-        response = requests.get(url, timeout=10) # Timeout von 10 Sekunden
+        response = requests.get(url, timeout=10)
         response.raise_for_status()
         data = response.json()
         if data.get('status') == 'ok' and 'values' in data:
             df = pd.DataFrame(data['values'])
             df = df.rename(columns={'datetime': 'timestamp'})
+            
+            # --- HIER IST DIE KORREKTUR ---
+            # Wir prüfen, ob 'volume' fehlt, und fügen es als 0 hinzu wenn nötig.
+            if 'volume' not in df.columns:
+                df['volume'] = 0.0
+            # --------------------------------
+
+            # Jetzt können wir die Typen sicher konvertieren
             df = df.astype({'open': 'float', 'high': 'float', 'low': 'float', 'close': 'float', 'volume': 'float'})
             return df.iloc[::-1].reset_index(drop=True)
     except Exception as e:
