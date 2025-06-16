@@ -73,38 +73,26 @@
     </div>
 
     <script>
-      async function populateTable() {
-        const tableBody = document.getElementById("finance-data");
-        // Dies ist die entscheidende Zeile:
-        // Der relative Pfad '/data' funktioniert lokal und auf Render.
-        const apiUrl = "/data";
+        async function populateTable() {
+            const tableBody = document.getElementById('finance-data');
+            const apiUrl = '/data';
 
-        try {
-          const response = await fetch(apiUrl);
+            try {
+                const response = await fetch(apiUrl);
+                if (!response.ok) throw new Error(`HTTP-Fehler! Status: ${response.status}`);
+                
+                const result = await response.json();
+                const assets = result.assets;
+                tableBody.innerHTML = ''; 
 
-          if (!response.ok) {
-            // Wirft einen Fehler, wenn die Antwort nicht erfolgreich war (z.B. 404 oder 500)
-            throw new Error(`HTTP-Fehler! Status: ${response.status}`);
-          }
+                assets.forEach(data => {
+                    const row = document.createElement('tr');
+                    let rowColor = '#ffffff';
+                    if (data.color === 'green') rowColor = '#e9f7ef';
+                    else if (data.color === 'red') rowColor = '#fbe9e7';
+                    row.style.backgroundColor = rowColor;
 
-          const result = await response.json();
-          const assets = result.assets;
-
-          tableBody.innerHTML = ""; // Leert die Tabelle vor dem Neuzeichnen
-
-          assets.forEach((data) => {
-            const row = document.createElement("tr");
-
-            // Setzt die Hintergrundfarbe basierend auf dem Signal
-            let rowColor = "#ffffff"; // Standard weiß
-            if (data.color === "green") {
-              rowColor = "#e9f7ef";
-            } else if (data.color === "red") {
-              rowColor = "#fbe9e7";
-            }
-            row.style.backgroundColor = rowColor;
-
-            row.innerHTML = `
+                    row.innerHTML = `
                         <td><strong>${data.asset}</strong></td>
                         <td>${data.currentPrice}</td>
                         <td>${data.entry}</td>
@@ -112,26 +100,18 @@
                         <td>${data.stopLoss}</td>
                         <td>
                             ${data.signal}
-                            ${
-                              data.icon
-                                ? `<i class="fas fa-${data.icon}" style="margin-left: 8px;"></i>`
-                                : ""
-                            } 
+                            ${data.icon ? `<i class="fas fa-${data.icon}" style="margin-left: 8px;"></i>` : ''} 
                         </td>
                     `;
-            tableBody.appendChild(row);
-          });
-        } catch (error) {
-          console.error("Fehler beim Laden der Finanzdaten:", error);
-          tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: red; padding: 20px;">
-                                        Fehler beim Laden der Daten: ${error.message}
-                                    </td></tr>`;
+                    tableBody.appendChild(row);
+                });
+            } catch (error) {
+                console.error('Fehler beim Laden der Finanzdaten:', error);
+                tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: red; padding: 20px;">Fehler beim Laden der Daten: ${error.message}</td></tr>`;
+            }
         }
-      }
-
-      // Führt die Funktion beim Laden der Seite und dann alle 60 Sekunden aus
-      populateTable();
-      setInterval(populateTable, 60000);
-    </script>
+        populateTable();
+        setInterval(populateTable, 60000); 
+    </script
   </body>
 </html>

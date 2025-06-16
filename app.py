@@ -1,4 +1,4 @@
-# app.py (Finale Version)
+# app.py (Version 2.0 mit TP/SL)
 import os
 import joblib
 import pandas as pd
@@ -8,72 +8,51 @@ from flask import Flask, jsonify, render_template
 from flask_cors import CORS
 from dotenv import load_dotenv
 
-# .env Datei laden für die API-Schlüssel (wird für lokale Tests verwendet)
 load_dotenv()
-
-# Flask App initialisieren und den 'templates' Ordner angeben
 app = Flask(__name__, template_folder='templates')
 CORS(app)
 
-# --- Globale Variablen und Konfiguration ---
 TWELVEDATA_API_KEY = os.getenv('TWELVEDATA_API_KEY')
-MODELS = {} # Ein Dictionary, um unsere geladenen Modelle zu speichern
-SYMBOLS = ['BTCUSD', 'XAUUSD'] # Die Symbole, die unsere App unterstützt
-
-# --- Hilfsfunktionen für die KI-Vorhersage ---
+MODELS = {}
+SYMBOLS = ['BTCUSD', 'XAUUSD']
 
 def add_features(df):
-    """Fügt technische Indikatoren als neue Spalten zum DataFrame hinzu."""
+    """Fügt technische Indikatoren inkl. ATR als neue Spalten zum DataFrame hinzu."""
     df['sma_fast'] = ta.trend.sma_indicator(df['close'], window=20)
     df['sma_slow'] = ta.trend.sma_indicator(df['close'], window=50)
     df['rsi'] = ta.momentum.rsi(df['close'], window=14)
     macd = ta.trend.MACD(df['close'], window_slow=26, window_fast=12, window_sign=9)
     df['macd'] = macd.macd()
     df['macd_signal'] = macd.macd_signal()
+    
+    # NEU: ATR (Average True Range) für die Volatilität hinzufügen
+    atr_indicator = ta.volatility.AverageTrueRange(high=df['high'], low=df['low'], close=df['close'], window=14)
+    df['atr'] = atr_indicator.average_true_range()
+    
     df.dropna(inplace=True)
     return df
 
-def get_live_data_for_features(symbol, interval='1min', outputsize=75):
-    """Holt genügend Live-Daten von der API und loggt detaillierte Fehler."""
-    print(f"Versuche, Live-Daten für {symbol} abzurufen...")
+def get_live_data_for_features(symbol, interval='1min', outputsize=100):
+    """Holt genügend Live-Daten von der API, um die Features berechnen zu können."""
     try:
         api_symbol = symbol.replace('USD', '/USD')
         url = f"https://api.twelvedata.com/time_series?symbol={api_symbol}&interval={interval}&outputsize={outputsize}&apikey={TWELVEDATA_API_KEY}"
-        
-        response = requests.get(url, timeout=15) # Timeout leicht erhöht
-        
-        # Überprüfen, ob die Anfrage an sich erfolgreich war (Status-Code 200-299)
+        response = requests.get(url, timeout=15)
         response.raise_for_status()
-        
         data = response.json()
-        
-        # Detaillierte Prüfung der Antwort
-        if data.get('status') == 'ok' and 'values' in data and len(data['values']) > 0:
-            print(f"Erfolgreich {len(data['values'])} Datenpunkte von API für {symbol} erhalten.")
+        if data.get('status') == 'ok' and 'values' in data:
             df = pd.DataFrame(data['values'])
             df = df.rename(columns={'datetime': 'timestamp'})
-            
             if 'volume' not in df.columns:
                 df['volume'] = 0.0
-                
             df = df.astype({'open': 'float', 'high': 'float', 'low': 'float', 'close': 'float', 'volume': 'float'})
             return df.iloc[::-1].reset_index(drop=True)
-        else:
-            # Wenn der Status nicht 'ok' ist, loggen wir die ganze Antwort
-            print(f"!!! Unerwartete, aber gültige JSON-Antwort für {symbol}:")
-            print(response.json())
-            return None
-
-    except requests.exceptions.HTTPError as http_err:
-        print(f"!!! HTTP-Fehler für {symbol}: {http_err}")
-        print(f"Antwort-Text: {response.text}")
     except Exception as e:
-        print(f"!!! Allgemeiner Fehler beim Abrufen der Live-Daten für {symbol}: {e}")
-    
+        print(f"Fehler beim Abrufen der Live-Daten für {symbol}: {e}")
     return None
 
 def load_models():
-    """Lädt die trainierten Modelle für alle Symbole beim Start der App in den Speicher."""
+    """Lädt die trainierten Modelle beim Start der App in den Speicher."""
     print("Lade KI-Modelle...")
     for symbol in SYMBOLS:
         model_filename = f"{symbol.lower()}_model.joblib"
@@ -85,58 +64,58 @@ def load_models():
     print("Alle verfügbaren Modelle geladen.")
 
 def get_prediction(symbol):
-    """Holt Live-Daten, berechnet Features und macht eine Vorhersage mit dem geladenen Modell."""
+    """Macht eine Vorhersage und berechnet TP/SL."""
     if symbol not in MODELS:
-        return "Modell nicht verfügbar", 0.0
+        return "Modell nicht verfügbar", 0.0, None, None
 
     live_df = get_live_data_for_features(symbol)
     if live_df is None or live_df.empty:
-        return "Datenfehler", 0.0
+        return "Datenfehler", 0.0, None, None
 
-    current_price = live_df.iloc[-1]['close']
     df_with_features = add_features(live_df)
-    
     if df_with_features.empty:
-        return "Nicht genügend Daten für Indikatoren", current_price
+        return "Nicht genügend Daten für Indikatoren", 0.0, None, None
 
+    latest_data = df_with_features.iloc[-1]
+    current_price = latest_data['close']
+    current_atr = latest_data['atr']
+    
     features_for_prediction = ['open', 'high', 'low', 'close', 'volume', 'sma_fast', 'sma_slow', 'rsi', 'macd', 'macd_signal']
     latest_features = df_with_features.tail(1)[features_for_prediction]
 
-    model = MODELS[symbol]
-    prediction = model.predict(latest_features)
-    
+    prediction = MODELS[symbol].predict(latest_features)
     signal_map = {1: "Kaufen", -1: "Verkaufen", 0: "Halten"}
     signal_text = signal_map.get(prediction[0], "Unbekannt")
     
-    return signal_text, current_price
-
-# --- Flask Routen (API Endpunkte) ---
+    # NEU: TP/SL Berechnung
+    tp_price, sl_price = None, None
+    if signal_text == "Kaufen":
+        sl_price = current_price - (2 * current_atr)
+        tp_price = current_price + (4 * current_atr)
+    elif signal_text == "Verkaufen":
+        sl_price = current_price + (2 * current_atr)
+        tp_price = current_price - (4 * current_atr)
+        
+    return signal_text, current_price, tp_price, sl_price
 
 @app.route('/data')
 def get_data():
     """Der API-Endpunkt, den das Frontend aufruft."""
     assets_data = []
     for symbol in SYMBOLS:
-        signal, price = get_prediction(symbol)
+        signal, price, take_profit, stop_loss = get_prediction(symbol)
         
-        color = "grey"
-        icon = "minus-circle"
-        if signal == "Kaufen":
-            color = "green"
-            icon = "arrow-up"
-        elif signal == "Verkaufen":
-            color = "red"
-            icon = "arrow-down"
+        color, icon = "grey", "minus-circle"
+        if signal == "Kaufen": color, icon = "green", "arrow-up"
+        elif signal == "Verkaufen": color, icon = "red", "arrow-down"
             
         assets_data.append({
             "asset": symbol,
             "currentPrice": f"{price:.2f}" if price else "N/A",
-            "entry": f"{price:.2f}" if signal not in ["Halten", "Datenfehler", "Modell nicht verfügbar", "Nicht genügend Daten für Indikatoren"] else "N/A",
-            "takeProfit": "N/A",
-            "stopLoss": "N/A",
-            "signal": signal,
-            "color": color,
-            "icon": icon
+            "entry": f"{price:.2f}" if signal in ["Kaufen", "Verkaufen"] else "N/A",
+            "takeProfit": f"{take_profit:.2f}" if take_profit else "N/A",
+            "stopLoss": f"{stop_loss:.2f}" if stop_loss else "N/A",
+            "signal": signal, "color": color, "icon": icon
         })
     return jsonify({"assets": assets_data})
 
@@ -145,12 +124,4 @@ def index():
     """Diese Route liefert die index.html Seite aus."""
     return render_template('index.html')
 
-# --- App Start ---
-
-# Dieser Block wird nur ausgeführt, wenn das Skript direkt gestartet wird (z.B. lokal)
-if __name__ == '__main__':
-    load_models()
-    app.run(host='0.0.0.0', port=5000, debug=True)
-
-# Lade die Modelle auch, wenn Gunicorn die App startet
 load_models()
