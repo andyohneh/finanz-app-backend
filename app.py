@@ -1,327 +1,146 @@
-from flask import Flask, jsonify, request 
-from flask_cors import CORS
-import requests
 import os
+import joblib
 import pandas as pd
-import ta.trend
-import ta.momentum
+import numpy as np
+import ta
+import requests
+from flask import Flask, jsonify
+from flask_cors import CORS
+from dotenv import load_dotenv
+
+# .env Datei laden für die API-Schlüssel
+load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
 
-# --- API-SCHLÜSSEL SICHER VERWALTEN ---
-# ERSETZE DIESE PLATZHALTER MIT DEINEN ECHTEN SCHLÜSSELN!
-BINANCE_API_KEY = os.getenv('BINANCE_API_KEY', 'Rk3PgYQk5cRd3MFZggibVSygaT3t1g9GvxVukLHDC6OZToinRhGDH5UQ29YtnCgw')
-BINANCE_SECRET_KEY = os.getenv('BINANCE_SECRET_KEY', 'cvlpf2G8qODAQ55iJQ6ZV8BfLzhCocGg5DR14ecDEBRGKKBvffBwii7o3ZhBC2Sk')
-FMP_API_KEY = os.getenv('FMP_API_KEY', 'hbWngJ2fn18YpGJqH6R2lk5vHTx7pv1j')
-TWELVEDATA_API_KEY = os.getenv('TWELVEDATA_API_KEY', '2a152b2fb77743cda7c0066278e4ef37')
+# --- Globale Variablen und Konfiguration ---
+TWELVEDATA_API_KEY = os.getenv('TWELVEDATA_API_KEY')
+MODELS = {} # Ein Dictionary, um unsere geladenen Modelle zu speichern
+SYMBOLS = ['BTCUSD', 'XAUUSD'] # Die Symbole, die unsere App unterstützt
 
-# Basis-URLs der APIs
-BINANCE_API_BASE_URL = "https://api.binance.com/api/v3"
-FMP_API_BASE_URL = "https://financialmodelingprep.com/api/v3"
-TWELVEDATA_API_BASE_URL = "https://api.twelvedata.com"
+# --- Hilfsfunktionen für die KI-Vorhersage ---
 
-# --- HILFSFUNKTIONEN ZUM ABRUFEN DER DATEN ---
-def get_bitcoin_price():
+def add_features(df):
+    """
+    Fügt die exakt gleichen technischen Indikatoren wie im Training hinzu.
+    Diese Funktion ist eine Kopie aus unserem ki_trainer.py.
+    """
+    df['sma_fast'] = ta.trend.sma_indicator(df['close'], window=20)
+    df['sma_slow'] = ta.trend.sma_indicator(df['close'], window=50)
+    df['rsi'] = ta.momentum.rsi(df['close'], window=14)
+    macd = ta.trend.MACD(df['close'], window_slow=26, window_fast=12, window_sign=9)
+    df['macd'] = macd.macd()
+    df['macd_signal'] = macd.macd_signal()
+    df.dropna(inplace=True)
+    return df
+
+def get_live_data_for_features(symbol, interval='1min', outputsize=100):
+    """
+    Holt genügend Live-Daten von der API, um die Features berechnen zu können.
+    """
     try:
-        response = requests.get(f"{BINANCE_API_BASE_URL}/ticker/price?symbol=BTCUSDT")
+        url = f"https://api.twelvedata.com/time_series?symbol={symbol.replace('USD', '/USD')}&interval={interval}&outputsize={outputsize}&apikey={TWELVEDATA_API_KEY}"
+        response = requests.get(url)
         response.raise_for_status()
         data = response.json()
-        return float(data['price'])
-    except requests.exceptions.RequestException as e:
-        print(f"Fehler beim Abrufen des Bitcoin-Preises: {e}")
-        return None
-    except KeyError:
-        print("Bitcoin-Preis nicht im erwarteten Format gefunden.")
-        return None
-
-def get_bitcoin_historical_prices(interval='1h', limit=150):
-    try:
-        response = requests.get(f"{BINANCE_API_BASE_URL}/klines?symbol=BTCUSDT&interval={interval}&limit={limit}")
-        response.raise_for_status()
-        data = response.json()
-        close_prices = [float(kline[4]) for kline in data]
-        return pd.Series(close_prices).iloc[::-1].reset_index(drop=True)
-    except requests.exceptions.RequestException as e:
-        print(f"Fehler beim Abrufen historischer Bitcoin-Preise: {e}")
-        return None
+        if data.get('status') == 'ok' and 'values' in data:
+            df = pd.DataFrame(data['values'])
+            # Spalten umbenennen und in richtige Datentypen konvertieren
+            df = df.rename(columns={'datetime': 'timestamp'})
+            df = df.astype({'open': 'float', 'high': 'float', 'low': 'float', 'close': 'float', 'volume': 'float'})
+            # Daten umdrehen, damit die neuesten Daten am Ende stehen
+            return df.iloc[::-1].reset_index(drop=True)
     except Exception as e:
-        print(f"Unbekannter Fehler beim Abrufen historischer Bitcoin-Preise: {e}")
+        print(f"Fehler beim Abrufen der Live-Daten für {symbol}: {e}")
         return None
 
-def get_gold_price():
-    try:
-        response = requests.get(f"{TWELVEDATA_API_BASE_URL}/price?symbol=XAU/USD&apikey={TWELVEDATA_API_KEY}")
-        response.raise_for_status()
-        data = response.json()
-        if 'price' in data:
-            return float(data['price'])
-        else:
-            print(f"XAU/USD Preis nicht im erwarteten Format gefunden von Twelve Data: {data}")
-            return None
-    except requests.exceptions.RequestException as e:
-        print(f"Fehler beim Abrufen des XAU/USD Preises von Twelve Data: {e}")
-        return None
-    except Exception as e:
-        print(f"Unbekannter Fehler beim Abrufen des XAU/USD Preises: {e}")
-        return None
+# --- Hauptfunktionen der App ---
 
-def get_gold_historical_prices(interval='1min', outputsize=150):
-    try:
-        response = requests.get(f"{TWELVEDATA_API_BASE_URL}/time_series?symbol=XAU/USD&interval={interval}&outputsize={outputsize}&apikey={TWELVEDATA_API_KEY}")
-        response.raise_for_status()
-        data = response.json()
-        if 'values' in data and data['values']:
-            close_prices = [float(entry['close']) for entry in data['values']]
-            return pd.Series(close_prices).iloc[::-1].reset_index(drop=True)
-        else:
-            print(f"Historische XAU/USD Preise nicht im erwarteten Format gefunden von Twelve Data: {data}")
-            return None
-    except requests.exceptions.RequestException as e:
-        print(f"Fehler beim Abrufen historischer XAU/USD Preise von Twelve Data: {e}")
-        return None
-    except Exception as e:
-        print(f"Unbekannter Fehler beim Abrufen historischer XAU/USD Preise: {e}")
-        return None
+def load_models():
+    """
+    Lädt die trainierten Modelle für alle Symbole beim Start der App in den Speicher.
+    """
+    print("Lade KI-Modelle...")
+    for symbol in SYMBOLS:
+        model_filename = f"{symbol.lower()}_model.joblib"
+        try:
+            MODELS[symbol] = joblib.load(model_filename)
+            print(f"Modell '{model_filename}' erfolgreich geladen.")
+        except FileNotFoundError:
+            print(f"WARNUNG: Modelldatei '{model_filename}' nicht gefunden. Für dieses Symbol können keine Vorhersagen gemacht werden.")
+    print("Alle verfügbaren Modelle geladen.")
 
-# --- UNSERE "KI"-LOGIK (MIT SMA Crossover, RSI & MACD & kombiniertem Signal) ---
-def calculate_trade_levels(current_price, historical_prices, asset_type, params):
-    if current_price is None:
-        return None, None, None, "N/A", "gray", "question"
+def get_prediction(symbol):
+    """
+    Holt Live-Daten, berechnet Features und macht eine Vorhersage mit dem geladenen Modell.
+    """
+    if symbol not in MODELS:
+        return "Modell nicht verfügbar", 0.0 # Signal und Preis
 
-    # Indikator-Parameter von params übernehmen oder Standardwerte verwenden
-    fast_sma_period = params.get('fast_sma_period', 10)
-    slow_sma_period = params.get('slow_sma_period', 20)
-    rsi_period = params.get('rsi_period', 14)
-    rsi_overbought = params.get('rsi_overbought', 70)
-    rsi_oversold = params.get('rsi_oversold', 30)
-    macd_fast_period = params.get('macd_fast_period', 12)
-    macd_slow_period = params.get('macd_slow_period', 26)
-    macd_signal_period = params.get('macd_signal_period', 9)
+    # 1. Genügend Live-Daten für die Feature-Berechnung holen
+    live_df = get_live_data_for_features(symbol)
+    if live_df is None or live_df.empty:
+        return "Datenfehler", 0.0
+
+    current_price = live_df.iloc[-1]['close'] # Der aktuellste Preis
+
+    # 2. Features hinzufügen (genau wie im Training)
+    df_with_features = add_features(live_df)
     
-    # Zusätzlicher Parameter für Signalstärke/Volatilitätsfilter
-    min_price_deviation_from_sma = params.get('min_price_deviation_from_sma', 0.002) # 0.2% Abweichung vom langsamen SMA
-    # Parameter für dynamischen Einstiegspreis
-    entry_price_correction_factor = params.get('entry_price_correction_factor', 0.001) # 0.1% Abweichung für Einstieg
+    if df_with_features.empty:
+        return "Nicht genügend Daten für Indikatoren", current_price
 
-    # Initialisiere Signale
-    sma_signal = "NEUTRAL"
-    rsi_signal_status = "NEUTRAL"
-    macd_crossover_signal = "NEUTRAL"
-    final_trade_signal = "HALTEN (Neutral)" 
-    signal_color = "gray"
-    signal_icon = "minus"
+    # 3. Die letzte Zeile mit den aktuellsten Features für die Vorhersage auswählen
+    latest_features = df_with_features.tail(1)[['open', 'high', 'low', 'close', 'volume', 'sma_fast', 'sma_slow', 'rsi', 'macd', 'macd_signal']]
+
+    # 4. KI-Modell um eine Vorhersage bitten
+    model = MODELS[symbol]
+    prediction = model.predict(latest_features) # Gibt ein Array zurück, z.B. [1]
     
-    # Der Einstiegspreis wird initial auf den aktuellen Preis gesetzt und dann angepasst
-    entry_price = round(current_price, 2) 
+    # 5. Vorhersage in ein lesbares Signal umwandeln
+    signal_map = {1: "Kaufen", -1: "Verkaufen", 0: "Halten"}
+    signal_text = signal_map.get(prediction[0], "Unbekannt")
+    
+    return signal_text, current_price
 
-    rsi_value = None
-    macd_line = None
-    macd_signal_line = None
-    slow_sma_value = None 
-
-    # Indikatoren nur für Bitcoin und XAUUSD berechnen, wenn genügend historische Daten vorhanden sind
-    if historical_prices is not None and asset_type in ["Bitcoin (BTC)", "XAUUSD"]:
-        all_prices = pd.concat([historical_prices, pd.Series([current_price])]).reset_index(drop=True)
-
-        # SMA Crossover
-        if len(all_prices) >= slow_sma_period + 1:
-            fast_sma_value = ta.trend.sma_indicator(all_prices, window=fast_sma_period).iloc[-1]
-            slow_sma_value = ta.trend.sma_indicator(all_prices, window=slow_sma_period).iloc[-1]
-            fast_sma_prev = ta.trend.sma_indicator(all_prices, window=fast_sma_period).iloc[-2]
-            slow_sma_prev = ta.trend.sma_indicator(all_prices, window=slow_sma_period).iloc[-2]
-
-            if fast_sma_prev < slow_sma_prev and fast_sma_value >= slow_sma_value:
-                sma_signal = "KAUF" # Golden Cross
-                print(f"!!! {asset_type}: SMA KAUF Signal (Golden Cross) !!!")
-            elif fast_sma_prev > slow_sma_prev and fast_sma_value <= slow_sma_value:
-                sma_signal = "VERKAUF" # Death Cross
-                print(f"!!! {asset_type}: SMA VERKAUF Signal (Death Cross) !!!")
-            elif current_price > slow_sma_value:
-                sma_signal = "TREND_AUF" # Preis über langem SMA
-            elif current_price < slow_sma_value:
-                sma_signal = "TREND_AB" # Preis unter langem SMA
-            print(f"{asset_type}: Fast SMA: {fast_sma_value:.2f}, Slow SMA: {slow_sma_value:.2f}")
-
-        # RSI
-        if len(all_prices) >= rsi_period:
-            rsi_value = ta.momentum.rsi(all_prices, window=rsi_period).iloc[-1]
-            print(f"{asset_type}: RSI ({rsi_period} period): {rsi_value:.2f}")
-            if rsi_value < rsi_oversold:
-                rsi_signal_status = "ÜBERVERKAUFT"
-            elif rsi_value > rsi_overbought:
-                rsi_signal_status = "ÜBERKAUFT"
-
-        # MACD
-        if len(all_prices) >= max(macd_fast_period, macd_slow_period, macd_signal_period) + 1:
-            macd_series = ta.trend.macd(all_prices, window_fast=macd_fast_period, window_slow=macd_slow_period)
-            macd_line = macd_series.iloc[-1]
-            macd_signal_line = ta.trend.macd_signal(all_prices, window_fast=macd_fast_period, window_slow=macd_slow_period, window_sign=macd_signal_period).iloc[-1]
-            macd_histogram = ta.trend.macd_diff(all_prices, window_fast=macd_fast_period, window_slow=macd_slow_period, window_sign=macd_signal_period).iloc[-1]
-            print(f"{asset_type}: MACD Line: {macd_line:.2f}, Signal Line: {macd_signal_line:.2f}, Histogram: {macd_histogram:.2f}")
-
-            macd_series_prev_calc = ta.trend.macd(all_prices.iloc[:-1], window_fast=macd_fast_period, window_slow=macd_slow_period)
-            macd_line_prev = macd_series_prev_calc.iloc[-1] if not macd_series_prev_calc.empty else None
-            
-            macd_signal_series_prev_calc = ta.trend.macd_signal(all_prices.iloc[:-1], window_fast=macd_fast_period, window_slow=macd_slow_period, window_sign=macd_signal_period)
-            macd_signal_line_prev = macd_signal_series_prev_calc.iloc[-1] if not macd_signal_series_prev_calc.empty else None
-
-            if macd_line_prev is not None and macd_signal_line_prev is not None:
-                if macd_line_prev < macd_signal_line_prev and macd_line >= macd_signal_line:
-                    macd_crossover_signal = "KAUF" # MACD Cross Up
-                    print(f"!!! {asset_type}: MACD KAUF Signal (Cross Up) !!!")
-                elif macd_line_prev > macd_signal_line_prev and macd_line <= macd_signal_line:
-                    macd_crossover_signal = "VERKAUF" # MACD Cross Down
-                    print(f"!!! {asset_type}: MACD VERKAUF Signal (Cross Down) !!!")
-
-
-        # --- Kombinierte Swing-Trading-Strategie zur finalen Signalgenerierung ---
-        # Priorisiere klare Signale und nutze andere Indikatoren zur Bestätigung
+# --- Flask Routen (API Endpunkte) ---
+@app.route('/data')
+def get_data():
+    """
+    Der API-Endpunkt, den das Frontend aufruft.
+    """
+    assets_data = []
+    for symbol in SYMBOLS:
+        print(f"Verarbeite Anfrage für {symbol}...")
+        signal, price = get_prediction(symbol)
         
-        is_above_sma_deviation = (current_price > slow_sma_value * (1 + min_price_deviation_from_sma)) if slow_sma_value is not None else False
-        is_below_sma_deviation = (current_price < slow_sma_value * (1 - min_price_deviation_from_sma)) if slow_sma_value is not None else False
-
-        # Signalentscheidung und Anpassung des Einstiegspreises
-        if (sma_signal == "KAUF" or macd_crossover_signal == "KAUF") and \
-           rsi_signal_status != "ÜBERKAUFT" and \
-           is_above_sma_deviation:
-            final_trade_signal = "KAUFEN"
-            signal_color = "green"
-            signal_icon = "arrow-up"
-            entry_price = round(current_price * (1 - entry_price_correction_factor), 2) # Empfohlener Einstieg unter aktuellem
-            print(f"### {asset_type}: STARKES KAUF Signal (Kombiniert) ###")
-        
-        elif (sma_signal == "VERKAUF" or macd_crossover_signal == "VERKAUF") and \
-             rsi_signal_status != "ÜBERVERKAUFT" and \
-             is_below_sma_deviation:
-            final_trade_signal = "VERKAUFEN"
-            signal_color = "red"
-            signal_icon = "arrow-down"
-            entry_price = round(current_price * (1 + entry_price_correction_factor), 2) # Empfohlener Einstieg über aktuellem
-            print(f"### {asset_type}: STARKES VERKAUF Signal (Kombiniert) ###")
-
-        else: # HALTEN / VORSICHT-Signale, wenn keine klaren Kauf/Verkauf-Signale
-            # Einstiegspreis bleibt hier der aktuelle Preis, da kein aktiver Trade empfohlen wird
-            entry_price = round(current_price, 2) 
+        # Farben und Icons basierend auf dem Signal setzen
+        color = "grey"
+        icon = "minus-circle"
+        if signal == "Kaufen":
+            color = "green"
+            icon = "arrow-up"
+        elif signal == "Verkaufen":
+            color = "red"
+            icon = "arrow-down"
             
-            if sma_signal == "TREND_AUF":
-                final_trade_signal = "HALTEN (Aufwärtstrend)"
-                signal_color = "darkgreen"
-                signal_icon = "chevron-up"
-            elif sma_signal == "TREND_AB":
-                final_trade_signal = "HALTEN (Abwärtstrend)"
-                signal_color = "darkred"
-                signal_icon = "chevron-down"
-            elif rsi_signal_status == "ÜBERKAUFT":
-                final_trade_signal = "VORSICHT (Überkauft)"
-                signal_color = "orange"
-                signal_icon = "exclamation"
-            elif rsi_signal_status == "ÜBERVERKAUFT":
-                final_trade_signal = "VORSICHT (Überverkauft)"
-                signal_color = "lightblue"
-                signal_icon = "exclamation"
-            else:
-                final_trade_signal = "HALTEN (Neutral)"
-                signal_color = "gray"
-                signal_icon = "minus"
+        assets_data.append({
+            "asset": symbol,
+            "currentPrice": f"{price:.2f}" if price else "N/A",
+            "entry": f"{price:.2f}" if signal != "Halten" else "N/A", # Entry-Preis ist der aktuelle Preis bei Signal
+            "takeProfit": "N/A", # TP/SL sind nicht Teil des KI-Modells
+            "stopLoss": "N/A",   # Könnte eine zukünftige Erweiterung sein
+            "signal": signal,
+            "color": color,
+            "icon": icon
+        })
+        
+    return jsonify({"assets": assets_data})
 
-
-        # Anpassung der Take Profit / Stop Loss Faktoren basierend auf dem finalen Signal
-        # WICHTIG: TP/SL werden jetzt IMMER relativ zum NEUEN entry_price berechnet
-        if final_trade_signal == "KAUFEN": # Für Long-Position
-            if asset_type == "XAUUSD":
-                take_profit = round(entry_price * 1.015, 2) # TP ist ÜBER dem dynamischen Einstieg
-                stop_loss = round(entry_price * 0.994, 2)  # SL ist UNTER dem dynamischen Einstieg
-            elif asset_type == "Bitcoin (BTC)":
-                take_profit = round(entry_price * 1.07, 2)
-                stop_loss = round(entry_price * 0.96, 2)
-        elif final_trade_signal == "VERKAUFEN": # Für Short-Position
-            if asset_type == "XAUUSD":
-                take_profit = round(entry_price * 0.988, 2) # TP ist UNTER dem dynamischen Einstieg
-                stop_loss = round(entry_price * 1.004, 2)  # SL ist ÜBER dem dynamischen Einstieg
-            elif asset_type == "Bitcoin (BTC)":
-                take_profit = round(entry_price * 0.94, 2)
-                stop_loss = round(entry_price * 1.05, 2)
-        elif final_trade_signal == "HALTEN (Aufwärtstrend)": # Long-Bias für TP/SL, basierend auf entry_price
-            if asset_type == "XAUUSD":
-                take_profit = round(entry_price * 1.004, 2) # Leichte Fortsetzung
-                stop_loss = round(entry_price * 0.999, 2)
-            elif asset_type == "Bitcoin (BTC)":
-                take_profit = round(entry_price * 1.015, 2)
-                stop_loss = round(entry_price * 0.988, 2)
-        elif final_trade_signal == "HALTEN (Abwärtstrend)": # Short-Bias für TP/SL, basierend auf entry_price
-            if asset_type == "XAUUSD":
-                take_profit = round(entry_price * 0.996, 2) # Leichte Fortsetzung (Short-Bias)
-                stop_loss = round(entry_price * 1.001, 2) # Leichte Fortsetzung (Short-Bias)
-            elif asset_type == "Bitcoin (BTC)":
-                take_profit = round(entry_price * 0.985, 2) # Short-Bias
-                stop_loss = round(entry_price * 1.015, 2) # Short-Bias
-        else: # HALTEN (Neutral) oder VORSICHT (Standard-Faktoren, basierend auf current_price)
-            if asset_type == "XAUUSD":
-                take_profit = round(current_price * 1.003, 2)
-                stop_loss = round(current_price * 0.999, 2)
-            elif asset_type == "Bitcoin (BTC)":
-                take_profit = round(current_price * 1.015, 2)
-                stop_loss = round(current_price * 0.988, 2)
-
-    return entry_price, take_profit, stop_loss, final_trade_signal, signal_color, signal_icon
-
-# --- FLASK-ROUTEN ---
-@app.route('/')
-def home():
-    return "Hallo von deinem Backend-Server!"
-
-@app.route('/api/finance_data')
-def get_finance_data():
-    assets_data = [] 
-
-    # Parameter aus der URL auslesen
-    params = {
-        'fast_sma_period': int(request.args.get('fast_sma_period', 10)),
-        'slow_sma_period': int(request.args.get('slow_sma_period', 20)),
-        'rsi_period': int(request.args.get('rsi_period', 14)),
-        'rsi_overbought': int(request.args.get('rsi_overbought', 70)),
-        'rsi_oversold': int(request.args.get('rsi_oversold', 30)),
-        'macd_fast_period': int(request.args.get('macd_fast_period', 12)),
-        'macd_slow_period': int(request.args.get('macd_slow_period', 26)),
-        'macd_signal_period': int(request.args.get('macd_signal_period', 9)),
-        'min_price_deviation_from_sma': float(request.args.get('min_price_deviation_from_sma', 0.002)), 
-        'entry_price_correction_factor': float(request.args.get('entry_price_correction_factor', 0.001)) 
-    }
-    print(f"Verwendete Indikator-Parameter: {params}")
-
-    # --- Bitcoin Daten ---
-    btc_price = get_bitcoin_price()
-    btc_historical_prices = get_bitcoin_historical_prices(interval='1h', limit=max(150, params['slow_sma_period'] + params['macd_slow_period'] + params['macd_signal_period'] + 10))
-    btc_entry, btc_tp, btc_sl, btc_signal, btc_color, btc_icon = calculate_trade_levels(btc_price, btc_historical_prices, "Bitcoin (BTC)", params)
-    assets_data.append({
-        "asset": "Bitcoin (BTC)",
-        "currentPrice": f"{btc_price:.2f}" if btc_price is not None else "N/A",
-        "entry": f"{btc_entry:.2f}" if btc_entry is not None else "N/A",
-        "takeProfit": f"{btc_tp:.2f}" if btc_tp is not None else "N/A",
-        "stopLoss": f"{btc_sl:.2f}" if btc_sl is not None else "N/A",
-        "signal": btc_signal,
-        "color": btc_color,
-        "icon": btc_icon
-    })
-
-    # --- XAUUSD (Gold) Daten ---
-    gold_price = get_gold_price()
-    gold_historical_prices = get_gold_historical_prices(interval='1min', outputsize=max(150, params['slow_sma_period'] + params['macd_slow_period'] + params['macd_signal_period'] + 10))
-    gold_entry, gold_tp, gold_sl, gold_signal, gold_color, gold_icon = calculate_trade_levels(gold_price, gold_historical_prices, "XAUUSD", params)
-    assets_data.append({
-        "asset": "XAUUSD",
-        "currentPrice": f"{gold_price:.2f}" if gold_price is not None else "N/A",
-        "entry": f"{gold_entry:.2f}" if gold_entry is not None else "N/A",
-        "takeProfit": f"{gold_tp:.2f}" if gold_tp is not None else "N/A",
-        "stopLoss": f"{gold_sl:.2f}" if gold_sl is not None else "N/A",
-        "signal": gold_signal,
-        "color": gold_color,
-        "icon": gold_icon
-    })
-    
-    return jsonify(assets_data) # Sendet jetzt nur das assets_data-Array
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    app.run(debug=False, host='0.0.0.0', port=port)
+    # Lädt die Modelle einmal beim Start
+    load_models()
+    # Startet die Flask-App
+    app.run(debug=True, port=5000)
