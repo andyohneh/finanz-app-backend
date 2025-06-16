@@ -11,293 +11,101 @@
     <style>
       body {
         font-family: Arial, sans-serif;
-        background-color: #ffffff; /* Reines Weiß */
+        background-color: #f4f7f9;
         color: #333;
         margin: 20px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        flex-direction: column;
       }
       h1 {
         color: #0056b3;
         text-align: center;
       }
-      p {
-        text-align: center;
-        font-size: 1.1em;
-        margin-bottom: 30px;
+      .container {
+        width: 90%;
+        max-width: 1000px;
+        background-color: #fff;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
       }
       table {
-        width: 80%; /* Die Tabelle nimmt 80% der Bildschirmbreite ein */
-        margin: 0 auto; /* Zentriert die Tabelle horizontal */
-        border-collapse: collapse; /* Entfernt doppelte Rahmenlinien */
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1); /* Ein leichter Schatten für die Tabelle */
-        background-color: #fff; /* Tabellenhintergrund weiß */
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 20px;
       }
       th,
       td {
-        padding: 12px 15px; /* Innenabstand für Zellen */
-        text-align: left; /* Text linksbündig */
-        border-bottom: 1px solid #ddd; /* Eine dünne Linie unter jeder Zelle */
+        padding: 12px 15px;
+        text-align: left;
+        border-bottom: 1px solid #ddd;
       }
       th {
-        background-color: #0056b3; /* Dunkelblauer Hintergrund für Kopfzellen */
-        color: white; /* Weißer Text für Kopfzellen */
-        text-transform: uppercase; /* Text in Großbuchstaben */
-        font-size: 0.9em; /* Etwas kleinere Schrift */
-      }
-      tr:nth-child(even) {
-        background-color: #f9f9f9; /* Hellerer Hintergrund für jede zweite Zeile (für bessere Lesbarkeit) */
-      }
-      tr:hover {
-        background-color: #f1f1f1; /* Hintergrund ändert sich leicht beim Überfahren mit der Maus */
-      }
-
-      /* CSS Regeln für Signal-Farben */
-      .signal-green {
-        background-color: #e6ffe6; /* Sehr helles Grün */
-        color: #008000; /* Dunkles Grün */
-        font-weight: bold;
-      }
-      .signal-lightgreen {
-        background-color: #f0fff0;
-        color: #228b22;
-      }
-      .signal-red {
-        background-color: #ffe6e6; /* Sehr helles Rot */
-        color: #cc0000; /* Dunkles Rot */
-        font-weight: bold;
-      }
-      .signal-lightcoral {
-        background-color: #fff0f0;
-        color: #cd5c5c;
-      }
-      .signal-darkgreen {
-        background-color: #e0f0e0;
-        color: #006400;
-      }
-      .signal-darkred {
-        background-color: #f0e0f0;
-        color: #8b0000;
-      }
-      .signal-orange {
-        background-color: #fff8e6;
-        color: #ff8c00;
-      }
-      .signal-lightblue {
-        background-color: #e6f7ff;
-        color: #0077c2;
-      }
-      .signal-gray {
-        background-color: #f8f8f8;
-        color: #6c757d;
-      }
-
-      /* CSS für das Formular */
-      .controls-container {
-        background-color: #f2f2f2;
-        padding: 20px;
-        border-radius: 8px;
-        margin: 20px auto;
-        width: 80%;
-        max-width: 900px;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-        text-align: center;
-      }
-      .controls-container h2 {
-        color: #0056b3;
-        margin-top: 0;
-        margin-bottom: 20px;
-      }
-      .input-group {
-        display: inline-block;
-        margin: 10px 15px;
-        text-align: left;
-        vertical-align: top;
-      }
-      .input-group label {
-        display: block;
-        margin-bottom: 5px;
-        font-weight: bold;
-        color: #555;
-      }
-      .input-group input[type="number"] {
-        width: 80px;
-        padding: 8px;
-        border: 1px solid #ccc;
-        border-radius: 4px;
-        font-size: 1em;
-      }
-      #updateDataBtn {
         background-color: #0056b3;
         color: white;
-        padding: 10px 20px;
-        border: none;
-        border-radius: 5px;
-        font-size: 1em;
-        cursor: pointer;
-        margin-top: 20px;
-        transition: background-color 0.3s ease;
       }
-      #updateDataBtn:hover {
-        background-color: #004494;
+      tr:nth-child(even) {
+        background-color: #f2f2f2;
       }
-
-      /* Container für die Tabelle, um horizontales Scrollen auf kleinen Bildschirmen zu ermöglichen */
-      .table-responsive {
-        width: 100%;
-        overflow-x: auto; /* Ermöglicht horizontales Scrollen */
-        -webkit-overflow-scrolling: touch; /* Für flüssiges Scrollen auf iOS */
-        margin: 20px auto; /* Zentrieren des Containers */
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1); /* Schatten wie bei der Tabelle */
-        background-color: #fff; /* Hintergrund wie bei der Tabelle */
-        border-radius: 8px; /* Abgerundete Ecken */
-      }
-
-      /* Media Query für Bildschirme kleiner als 768px (typisch für Tablets und Smartphones) */
-      @media (max-width: 768px) {
-        body {
-          margin: 10px; /* Weniger Rand auf kleinen Geräten */
-        }
-
-        h1 {
-          font-size: 1.8em; /* Kleinere Überschrift */
-        }
-
-        p {
-          font-size: 1em;
-        }
-
-        .controls-container {
-          width: 95%;
-          padding: 10px;
-          margin: 10px auto;
-        }
-
-        .input-group {
-          display: block; /* Inputs untereinander anstatt nebeneinander */
-          margin: 10px 0;
-          text-align: center;
-        }
-        .input-group label {
-          width: 100%;
-        }
-        .input-group input[type="number"] {
-          width: 100px;
-        }
-
-        #updateDataBtn {
-          width: 90%;
-          font-size: 0.9em;
-        }
-
-        table {
-          width: 700px; /* Tabelle muss breiter sein, damit sie scrollbar ist */
-          max-width: none; /* Keine maximale Breite, damit sie über den Container gehen kann */
-          margin: 0;
-        }
-
-        th,
-        td {
-          padding: 8px 10px;
-          font-size: 0.9em;
-          white-space: nowrap; /* Verhindert Zeilenumbrüche in Zellen */
-        }
+      tr:hover {
+        background-color: #e9ecef;
       }
     </style>
   </head>
   <body>
-    <h1>Willkommen bei deiner Finanz-App!</h1>
-    <p>Hier werden bald die Daten für XAUUSD und Bitcoin angezeigt.</p>
-
-    <div class="controls-container">
-      <h2>Indikator-Einstellungen</h2>
-      <div class="input-group">
-        <label for="fastSma">Schneller SMA (Periode):</label>
-        <input type="number" id="fastSma" value="10" min="1" max="200" />
-      </div>
-      <div class="input-group">
-        <label for="slowSma">Langsamer SMA (Periode):</label>
-        <input type="number" id="slowSma" value="20" min="1" max="200" />
-      </div>
-      <div class="input-group">
-        <label for="rsiPeriod">RSI (Periode):</label>
-        <input type="number" id="rsiPeriod" value="14" min="1" max="200" />
-      </div>
-      <div class="input-group">
-        <label for="rsiOverbought">RSI Überkauft:</label>
-        <input type="number" id="rsiOverbought" value="70" min="50" max="100" />
-      </div>
-      <div class="input-group">
-        <label for="rsiOversold">RSI Überverkauft:</label>
-        <input type="number" id="rsiOversold" value="30" min="0" max="50" />
-      </div>
-      <div class="input-group">
-        <label for="macdFast">MACD Schnell (Periode):</label>
-        <input type="number" id="macdFast" value="12" min="1" max="200" />
-      </div>
-      <div class="input-group">
-        <label for="macdSlow">MACD Langsam (Periode):</label>
-        <input type="number" id="macdSlow" value="26" min="1" max="200" />
-      </div>
-      <div class="input-group">
-        <label for="macdSignal">MACD Signal (Periode):</label>
-        <input type="number" id="macdSignal" value="9" min="1" max="200" />
-      </div>
-      <div class="input-group">
-        <label for="minPriceDeviation">Min. Abweichung SMA (%):</label>
-        <input
-          type="number"
-          id="minPriceDeviation"
-          value="0.2"
-          min="0"
-          step="0.05"
-          max="10"
-        />
-      </div>
-      <button id="updateDataBtn">
-        Daten mit neuen Parametern aktualisieren
-      </button>
-    </div>
-    <div class="table-responsive">
+    <div class="container">
+      <h1>Meine Finanz-App</h1>
       <table>
         <thead>
           <tr>
             <th>Asset</th>
             <th>Aktueller Preis</th>
-            <th>Einstiegspreis</th>
+            <th>Entry</th>
             <th>Take Profit</th>
             <th>Stop Loss</th>
-            <th>Signal</th>
+            <th>KI Signal</th>
           </tr>
         </thead>
-        <tbody id="data-table-body"></tbody>
+        <tbody id="finance-data"></tbody>
       </table>
     </div>
+
     <script>
       async function populateTable() {
         const tableBody = document.getElementById("finance-data");
-        const apiUrl = "/data"; // <-- Die korrekte, relative URL
+        // Dies ist die entscheidende Zeile:
+        // Der relative Pfad '/data' funktioniert lokal und auf Render.
+        const apiUrl = "/data";
 
         try {
           const response = await fetch(apiUrl);
+
           if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+            // Wirft einen Fehler, wenn die Antwort nicht erfolgreich war (z.B. 404 oder 500)
+            throw new Error(`HTTP-Fehler! Status: ${response.status}`);
           }
+
           const result = await response.json();
           const assets = result.assets;
 
-          tableBody.innerHTML = "";
+          tableBody.innerHTML = ""; // Leert die Tabelle vor dem Neuzeichnen
 
           assets.forEach((data) => {
             const row = document.createElement("tr");
-            if (data.color) {
-              row.style.backgroundColor =
-                data.color === "grey"
-                  ? "#f8f9fa"
-                  : data.color === "green"
-                  ? "#e9f7ef"
-                  : "#fbe9e7";
+
+            // Setzt die Hintergrundfarbe basierend auf dem Signal
+            let rowColor = "#ffffff"; // Standard weiß
+            if (data.color === "green") {
+              rowColor = "#e9f7ef";
+            } else if (data.color === "red") {
+              rowColor = "#fbe9e7";
             }
+            row.style.backgroundColor = rowColor;
+
             row.innerHTML = `
-                        <td>${data.asset}</td>
+                        <td><strong>${data.asset}</strong></td>
                         <td>${data.currentPrice}</td>
                         <td>${data.entry}</td>
                         <td>${data.takeProfit}</td>
@@ -306,7 +114,7 @@
                             ${data.signal}
                             ${
                               data.icon
-                                ? `<i class="fas fa-${data.icon}" style="margin-left: 5px;"></i>`
+                                ? `<i class="fas fa-${data.icon}" style="margin-left: 8px;"></i>`
                                 : ""
                             } 
                         </td>
@@ -316,14 +124,14 @@
         } catch (error) {
           console.error("Fehler beim Laden der Finanzdaten:", error);
           tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: red; padding: 20px;">
-                                        Fehler beim Laden der Daten: ${error.message}<br>
-                                        Bitte überprüfen Sie die Browser-Konsole (F12) für weitere Details.
+                                        Fehler beim Laden der Daten: ${error.message}
                                     </td></tr>`;
         }
       }
 
+      // Führt die Funktion beim Laden der Seite und dann alle 60 Sekunden aus
       populateTable();
-      setInterval(populateTable, 60000); // Intervall auf 60s erhöht, um API-Limits zu schonen
+      setInterval(populateTable, 60000);
     </script>
   </body>
 </html>
