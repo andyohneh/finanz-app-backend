@@ -46,12 +46,6 @@
         background-color: #0056b3;
         color: white;
       }
-      tr:nth-child(even) {
-        background-color: #f2f2f2;
-      }
-      tr:hover {
-        background-color: #e9ecef;
-      }
     </style>
   </head>
   <body>
@@ -73,26 +67,32 @@
     </div>
 
     <script>
-        async function populateTable() {
-            const tableBody = document.getElementById('finance-data');
-            const apiUrl = '/data';
+      async function populateTable() {
+        const tableBody = document.getElementById("finance-data");
+        const apiUrl = "/data";
+        try {
+          const response = await fetch(apiUrl);
+          if (!response.ok)
+            throw new Error(`HTTP-Fehler! Status: ${response.status}`);
 
-            try {
-                const response = await fetch(apiUrl);
-                if (!response.ok) throw new Error(`HTTP-Fehler! Status: ${response.status}`);
-                
-                const result = await response.json();
-                const assets = result.assets;
-                tableBody.innerHTML = ''; 
+          const result = await response.json();
+          const assets = result.assets;
+          tableBody.innerHTML = "";
 
-                assets.forEach(data => {
-                    const row = document.createElement('tr');
-                    let rowColor = '#ffffff';
-                    if (data.color === 'green') rowColor = '#e9f7ef';
-                    else if (data.color === 'red') rowColor = '#fbe9e7';
-                    row.style.backgroundColor = rowColor;
+          assets.forEach((data) => {
+            const row = document.createElement("tr");
 
-                    row.innerHTML = `
+            // --- HIER IST DIE KORREKTUR ---
+            if (data.color === "green") {
+              row.style.backgroundColor = "#e9f7ef";
+            } else if (data.color === "red") {
+              row.style.backgroundColor = "#fbe9e7";
+            } else if (data.color === "grey") {
+              row.style.backgroundColor = "#f8f9fa"; // Heller Grauton
+            }
+            // --------------------------------
+
+            row.innerHTML = `
                         <td><strong>${data.asset}</strong></td>
                         <td>${data.currentPrice}</td>
                         <td>${data.entry}</td>
@@ -100,18 +100,22 @@
                         <td>${data.stopLoss}</td>
                         <td>
                             ${data.signal}
-                            ${data.icon ? `<i class="fas fa-${data.icon}" style="margin-left: 8px;"></i>` : ''} 
+                            ${
+                              data.icon
+                                ? `<i class="fas fa-${data.icon}" style="margin-left: 8px;"></i>`
+                                : ""
+                            } 
                         </td>
                     `;
-                    tableBody.appendChild(row);
-                });
-            } catch (error) {
-                console.error('Fehler beim Laden der Finanzdaten:', error);
-                tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: red; padding: 20px;">Fehler beim Laden der Daten: ${error.message}</td></tr>`;
-            }
+            tableBody.appendChild(row);
+          });
+        } catch (error) {
+          console.error("Fehler beim Laden der Finanzdaten:", error);
+          tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: red; padding: 20px;">Fehler beim Laden der Daten: ${error.message}</td></tr>`;
         }
-        populateTable();
-        setInterval(populateTable, 60000); 
-    </script
+      }
+      populateTable();
+      setInterval(populateTable, 60000);
+    </script>
   </body>
 </html>
