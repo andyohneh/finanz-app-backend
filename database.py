@@ -1,75 +1,59 @@
-import pandas as pd
-import numpy as np
-import ta
-import joblib
-import requests
+# database.py (Finale, korrekte Version für V2)
 import os
-from sqlalchemy.dialects.postgresql import insert
-from database import engine, predictions
+from dotenv import load_dotenv
+from sqlalchemy import (create_engine, MetaData, Table, Column, 
+                        Integer, String, Float, DateTime, UniqueConstraint)
 from datetime import datetime
 
-TWELVEDATA_API_KEY = os.getenv('TWELVEDATA_API_KEY')
+# Lädt die .env Datei für lokale Tests
+load_dotenv()
 
-def get_live_data_for_features(symbol, interval='1min', outputsize=100):
+# --- DATENBANK-VERBINDUNG ---
+DATABASE_URL = os.getenv('DATABASE_URL')
+if not DATABASE_URL:
+    raise ValueError("Keine DATABASE_URL in den Umgebungsvariablen gefunden!")
+
+engine = create_engine(DATABASE_URL)
+meta = MetaData()
+
+# --- TABELLEN-DEFINITIONEN ---
+
+# Tabelle 1: Für die gesammelten Rohdaten
+historical_data = Table(
+   'historical_data', meta, 
+   Column('id', Integer, primary_key=True),
+   Column('symbol', String(10), nullable=False),
+   Column('timestamp', DateTime, nullable=False),
+   Column('open', Float, nullable=False),
+   Column('high', Float, nullable=False),
+   Column('low', Float, nullable=False),
+   Column('close', Float, nullable=False),
+   Column('volume', Float),
+   # Stellt sicher, dass jede Kerze (Symbol + Zeit) nur einmal existiert
+   UniqueConstraint('symbol', 'timestamp', name='uq_symbol_timestamp')
+)
+
+# Tabelle 2: Für die fertigen Vorhersagen unserer KI
+predictions = Table(
+    'predictions', meta,
+    Column('id', Integer, primary_key=True),
+    Column('symbol', String(10), nullable=False, unique=True),
+    Column('signal', String(10), nullable=False),
+    Column('price', Float, nullable=False),
+    Column('last_updated', DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+)
+
+
+def create_tables():
+    """Erstellt alle oben definierten Tabellen in der Datenbank, falls sie noch nicht existieren."""
     try:
-        url = f"https://api.twelvedata.com/time_series?symbol={symbol.replace('USD', '/USD')}&interval={interval}&outputsize={outputsize}&apikey={TWELVEDATA_API_KEY}"
-        response = requests.get(url)
-        response.raise_for_status()
-        data = response.json()
-        if data.get('status') == 'ok' and 'values' in data:
-            df = pd.DataFrame(data['values'])
-            df = df.rename(columns={'datetime': 'timestamp'})
-            df = df.astype({'open': 'float', 'high': 'float', 'low': 'float', 'close': 'float', 'volume': 'float'})
-            return df.iloc[::-1].reset_index(drop=True)
+        print("Versuche, Tabellen zu erstellen...")
+        meta.create_all(engine)
+        print("Tabellen erfolgreich überprüft/erstellt.")
     except Exception as e:
-        print(f"Fehler beim Abrufen der Live-Daten für {symbol}: {e}")
-    return None
+        print(f"Ein Fehler beim Erstellen der Tabellen ist aufgetreten: {e}")
 
-def add_features(df):
-    df['sma_fast'] = ta.trend.sma_indicator(df['close'], window=20)
-    df['sma_slow'] = ta.trend.sma_indicator(df['close'], window=50)
-    df['rsi'] = ta.momentum.rsi(df['close'], window=14)
-    macd = ta.trend.MACD(df['close'], window_slow=26, window_fast=12, window_sign=9)
-    df['macd'] = macd.macd()
-    df['macd_signal'] = macd.macd_signal()
-    df.dropna(inplace=True)
-    return df
 
-def update_predictions():
-    SYMBOLS = ['BTCUSD', 'XAUUSD']
-    MODELS = {}
-    for symbol in SYMBOLS:
-        try:
-            MODELS[symbol] = joblib.load(f"{symbol.lower()}_model.joblib")
-        except FileNotFoundError:
-            print(f"Modell für {symbol} nicht gefunden.")
-            continue
-    
-    for symbol in SYMBOLS:
-        if symbol not in MODELS: continue
-        
-        live_df = get_live_data_for_features(symbol)
-        if live_df is None or live_df.empty: continue
-
-        current_price = live_df.iloc[-1]['close']
-        df_with_features = add_features(live_df)
-        if df_with_features.empty: continue
-
-        latest_features = df_with_features.tail(1)[['open', 'high', 'low', 'close', 'volume', 'sma_fast', 'sma_slow', 'rsi', 'macd', 'macd_signal']]
-        
-        prediction = MODELS[symbol].predict(latest_features)
-        signal_map = {1: "Kaufen", -1: "Verkaufen", 0: "Halten"}
-        signal_text = signal_map.get(prediction[0], "Unbekannt")
-        
-        stmt = insert(predictions).values(symbol=symbol, signal=signal_text, price=current_price)
-        stmt = stmt.on_conflict_do_update(index_elements=['symbol'], set_=dict(signal=signal_text, price=current_price, last_updated=datetime.utcnow()))
-        
-        with engine.connect() as conn:
-            conn.execute(stmt)
-            conn.commit()
-            print(f"Vorhersage für {symbol} ({signal_text} @ {current_price}) in DB gespeichert.")
-
+# Dieser Block wird nur ausgeführt, wenn man das Skript direkt startet (z.B. mit 'python database.py')
 if __name__ == "__main__":
-    print("Starte Prediction Worker...")
-    update_predictions()
-    print("Prediction Worker beendet.")
+    create_tables()
