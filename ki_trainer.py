@@ -13,7 +13,6 @@ def load_data_from_db(symbol: str, limit: int = 4000):
     print(f"Lade die letzten {limit} Datenpunkte für {symbol} aus der Datenbank...")
     try:
         with engine.connect() as conn:
-            # Sicherheitslücke behoben: Parameterisierte Abfrage verwenden
             query = text("SELECT * FROM historical_data WHERE symbol = :symbol ORDER BY timestamp DESC LIMIT :limit")
             df = pd.read_sql_query(query, conn, params={'symbol': symbol, 'limit': limit})
             if not df.empty:
@@ -34,6 +33,17 @@ def add_features(df):
     df['macd'] = macd.macd()
     df['macd_signal'] = macd.macd_signal()
     df['atr'] = ta.volatility.AverageTrueRange(high=df['high'], low=df['low'], close=df['close'], window=14).average_true_range()
+
+    # ### NEUER CODEBLOCK: BOLLINGER BÄNDER ###
+    # Initialisiere den Bollinger Band Indikator
+    indicator_bb = ta.volatility.BollingerBands(close=df["close"], window=20, window_dev=2)
+    # Füge die Bänder und nützliche Werte als Features hinzu
+    df['bb_high_band'] = indicator_bb.bollinger_hband()  # Oberes Band
+    df['bb_low_band'] = indicator_bb.bollinger_lband()   # Unteres Band
+    df['bb_pband'] = indicator_bb.bollinger_pband()      # %B (Position des Kurses innerhalb der Bänder)
+    df['bb_wband'] = indicator_bb.bollinger_wband()      # Bandbreite (Maß für Volatilität)
+    # ### ENDE NEUER CODEBLOCK ###
+    
     df.dropna(inplace=True)
     return df
 
@@ -55,7 +65,11 @@ def train_and_save_model(df, symbol):
     
     print(f"Starte Training für {symbol}...")
     
-    features = ['sma_fast', 'sma_slow', 'rsi', 'macd', 'macd_signal', 'atr']
+    # ### ERWEITERT: Die Liste der Features wurde um die Bollinger Bänder ergänzt ###
+    features = [
+        'sma_fast', 'sma_slow', 'rsi', 'macd', 'macd_signal', 'atr',
+        'bb_high_band', 'bb_low_band', 'bb_pband', 'bb_wband'
+    ]
     target = 'signal'
     
     X = df[features]
@@ -70,7 +84,6 @@ def train_and_save_model(df, symbol):
     print(f"Leistungsbericht für {symbol} auf Test-Daten:")
     print(classification_report(y_test, model.predict(X_test), target_names=['Verkaufen (-1)', 'Halten (0)', 'Kaufen (1)']))
     
-    # Modellnamen ohne Schrägstrich speichern, z.B. "BTCUSD_model.joblib"
     safe_symbol_name = symbol.replace('/', '')
     model_filename = f'models/{safe_symbol_name}_model.joblib'
     joblib.dump(model, model_filename)
@@ -91,7 +104,6 @@ def push_models_to_github():
         subprocess.run(['git', 'config', '--global', 'user.name', 'GitHub Action'], check=True)
         subprocess.run(['git', 'add', 'models/'], check=True)
         
-        # Prüfen, ob es Änderungen zum Committen gibt
         status_result = subprocess.run(['git', 'status', '--porcelain'], capture_output=True, text=True)
         if not status_result.stdout:
             print("Keine neuen Modell-Änderungen zum Committen gefunden.")
@@ -106,7 +118,6 @@ def push_models_to_github():
         print(f"Ein Fehler beim Git-Push ist aufgetreten: {e}")
 
 def main():
-    # KORREKTUR: Hier müssen die Symbole das Format der Datenbank haben!
     SYMBOLS = ['BTC/USD', 'XAU/USD']
     
     for symbol in SYMBOLS:
