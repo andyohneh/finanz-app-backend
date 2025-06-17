@@ -1,4 +1,4 @@
-# app.py (Finale Debug-Version)
+# app.py (Version mit Chart-Daten-API - KORRIGIERT)
 import os
 import joblib
 import pandas as pd
@@ -7,6 +7,8 @@ import requests
 from flask import Flask, jsonify, render_template
 from flask_cors import CORS
 from dotenv import load_dotenv
+from sqlalchemy import text
+from database import engine
 
 load_dotenv()
 app = Flask(__name__, template_folder='templates')
@@ -28,51 +30,58 @@ def add_features(df):
     return df
 
 def get_live_data_for_features(symbol, interval='1min', outputsize=100):
+    api_symbol = f"{symbol[:-3]}/{symbol[-3:]}" # Benutze die neue, sichere Methode auch hier
+    url = f"https://api.twelvedata.com/time_series?symbol={api_symbol}&interval={interval}&outputsize={outputsize}&apikey={TWELVEDATA_API_KEY}"
     try:
-        api_symbol = symbol.replace('USD', '/USD')
-        url = f"https://api.twelvedata.com/time_series?symbol={api_symbol}&interval={interval}&outputsize={outputsize}&apikey={TWELVEDATA_API_KEY}"
-        
-        # --- NEUE DEBUG-ZEILE ---
-        print(f"DEBUG: Rufe URL für {symbol} auf: {url}")
-        # -------------------------
-
-        response = requests.get(url, timeout=15)
+        response = requests.get(url)
         response.raise_for_status()
         data = response.json()
-        if data.get('status') == 'ok' and 'values' in data:
-            df = pd.DataFrame(data['values'])
-            df = df.rename(columns={'datetime': 'timestamp'})
-            if 'volume' not in df.columns:
-                df['volume'] = 0.0
-            df = df.astype({'open': 'float', 'high': 'float', 'low': 'float', 'close': 'float', 'volume': 'float'})
-            return df.iloc[::-1].reset_index(drop=True)
-    except Exception as e:
-        print(f"Fehler beim Abrufen der Live-Daten für {symbol}: {e}")
-    return None
+        if 'values' not in data:
+            print(f"Fehlerhafte API-Antwort für {symbol}: {data}")
+            return pd.DataFrame()
+        df = pd.DataFrame(data['values'])
+        df = df.iloc[::-1].reset_index(drop=True)
+        df[['open', 'high', 'low', 'close']] = df[['open', 'high', 'low', 'close']].astype(float)
+        return df
+    except requests.exceptions.RequestException as e:
+        print(f"Fehler bei der API-Anfrage für {symbol}: {e}")
+        return pd.DataFrame()
 
 def load_models():
     print("Lade KI-Modelle...")
     for symbol in SYMBOLS:
-        try:
-            MODELS[symbol] = joblib.load(f"{symbol.lower()}_model.joblib")
-            print(f"Modell '{symbol.lower()}_model.joblib' erfolgreich geladen.")
-        except Exception as e:
-            print(f"FEHLER beim Laden des Modells für {symbol}: {e}")
-    print("Modell-Ladevorgang beendet.")
+        model_path = f'models/{symbol}_model.joblib'
+        if os.path.exists(model_path):
+            try:
+                MODELS[symbol] = joblib.load(model_path)
+                print(f"-> Modell für {symbol} erfolgreich geladen.")
+            except Exception as e:
+                print(f"Fehler beim Laden des Modells für {symbol}: {e}")
+        else:
+            print(f"WARNUNG: Keine Modelldatei für {symbol} unter {model_path} gefunden.")
+    print("Modelle geladen.")
+
+@app.before_request
+def before_first_request_func():
+    if not MODELS:
+        load_models()
+
+@app.route('/')
+def index():
+    return render_template('index.html')
 
 def get_prediction(symbol):
-    if symbol not in MODELS:
-        return "Modell nicht verfügbar", 0.0, None, None
-    live_df = get_live_data_for_features(symbol)
-    if live_df is None or live_df.empty:
-        return "Datenfehler", 0.0, None, None
-    df_with_features = add_features(live_df)
+    df = get_live_data_for_features(symbol)
+    if df.empty or symbol not in MODELS:
+        return "Datenfehler", 0, 0, 0
+    df_with_features = add_features(df)
     if df_with_features.empty:
-        return "Nicht genügend Daten für Indikatoren", 0.0, None, None
-    latest_data = df_with_features.iloc[-1]
-    current_price, current_atr = latest_data['close'], latest_data['atr']
-    features = ['open', 'high', 'low', 'close', 'volume', 'sma_fast', 'sma_slow', 'rsi', 'macd', 'macd_signal']
-    latest_features = df_with_features.tail(1)[features]
+        return "Berechnungsfehler", 0, 0, 0
+    latest_features = df_with_features.tail(1)
+    current_price = latest_features['close'].iloc[0]
+    current_atr = latest_features['atr'].iloc[0]
+    features = MODELS[symbol].feature_names_in_
+    latest_features = latest_features[features]
     prediction = MODELS[symbol].predict(latest_features)
     signal_map = {1: "Kaufen", -1: "Verkaufen", 0: "Halten"}
     signal_text = signal_map.get(prediction[0], "Unbekannt")
@@ -101,10 +110,41 @@ def get_data():
             "stopLoss": f"{stop_loss:.2f}" if stop_loss else "N/A",
             "signal": signal, "color": color, "icon": icon
         })
-    return jsonify({"assets": assets_data})
+    return jsonify(assets_data)
 
-@app.route('/')
-def index():
-    return render_template('index.html')
 
-load_models()
+@app.route('/historical-data/<symbol>')
+def get_historical_data(symbol):
+    print(f"Anfrage für historische Daten für {symbol} erhalten.")
+    
+    # KORREKTUR: Dies ist die neue, sichere Methode zur Symbol-Umwandlung
+    db_symbol = f"{symbol[:-3]}/{symbol[-3:]}"
+    
+    query = text("""
+        SELECT timestamp, close FROM historical_data 
+        WHERE symbol = :symbol_param
+        ORDER BY timestamp DESC 
+        LIMIT 200
+    """)
+    
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(query, {"symbol_param": db_symbol}).fetchall()
+        
+        result.reverse()
+        
+        labels = [row[0].strftime('%H:%M') for row in result]
+        data_points = [row[1] for row in result]
+        
+        return jsonify({
+            "labels": labels,
+            "data": data_points
+        })
+
+    except Exception as e:
+        print(f"Fehler beim Holen der historischen Daten für {symbol}: {e}")
+        return jsonify({"error": "Konnte historische Daten nicht laden."}), 500
+
+
+if __name__ == '__main__':
+    app.run(debug=True, port=5001)

@@ -13,9 +13,11 @@ def load_data_from_db(symbol: str, limit: int = 4000):
     print(f"Lade die letzten {limit} Datenpunkte für {symbol} aus der Datenbank...")
     try:
         with engine.connect() as conn:
-            query = text(f"SELECT * FROM historical_data WHERE symbol = '{symbol}' ORDER BY timestamp DESC LIMIT {limit}")
-            df = pd.read_sql_query(query, conn)
-            df = df.iloc[::-1].reset_index(drop=True)
+            # Sicherheitslücke behoben: Parameterisierte Abfrage verwenden
+            query = text("SELECT * FROM historical_data WHERE symbol = :symbol ORDER BY timestamp DESC LIMIT :limit")
+            df = pd.read_sql_query(query, conn, params={'symbol': symbol, 'limit': limit})
+            if not df.empty:
+                df = df.iloc[::-1].reset_index(drop=True)
             print(f"Erfolgreich {len(df)} Datenpunkte geladen.")
             return df
     except Exception as e:
@@ -35,95 +37,90 @@ def add_features(df):
     df.dropna(inplace=True)
     return df
 
-def add_labels(df, future_periods, percent_change_threshold):
-    """Erstellt die Ziel-Labels basierend auf den übergebenen Strategie-Parametern."""
-    print(f"Füge Ziel-Labels hinzu (Horizont: {future_periods} min, Schwelle: {percent_change_threshold:.2%})...")
-    df['future_price'] = df['close'].shift(-future_periods)
-    df['price_change_pct'] = (df['future_price'] - df['close']) / df['close']
-    conditions = [
-        df['price_change_pct'] > percent_change_threshold,
-        df['price_change_pct'] < -percent_change_threshold,
-    ]
-    choices = [1, -1]
-    df['target'] = np.select(conditions, choices, default=0)
-    df.dropna(inplace=True)
-    df.drop(columns=['future_price', 'price_change_pct'], inplace=True)
-    df['target'] = df['target'].astype(int)
-    return df
+def add_labels(df, future_periods=240, percent_change_threshold=0.003):
+    print(f"Füge Ziel-Labels hinzu (Horizont: {future_periods} min, Schwelle: {percent_change_threshold*100:.2f}%)...")
+    future_close = df['close'].shift(-future_periods)
+    df['price_change'] = (future_close - df['close']) / df['close']
+    
+    df['signal'] = 0
+    df.loc[df['price_change'] > percent_change_threshold, 'signal'] = 1
+    df.loc[df['price_change'] < -percent_change_threshold, 'signal'] = -1
+    
+    return df.dropna(subset=['price_change', 'signal'])
 
 def train_and_save_model(df, symbol):
-    """Trainiert ein Modell und speichert es als .joblib-Datei."""
-    print(f"Starte Training für {symbol}...")
     from sklearn.model_selection import train_test_split
     from sklearn.ensemble import RandomForestClassifier
     from sklearn.metrics import classification_report
-
-    features = ['open', 'high', 'low', 'close', 'volume', 'sma_fast', 'sma_slow', 'rsi', 'macd', 'macd_signal', 'atr']
-    X = df[features]
-    y = df['target']
     
-    # Überprüfen, ob alle drei Klassen (1, 0, -1) vorhanden sind. Mindestens 2 müssen es sein.
-    if len(y.unique()) < 2:
-        print(f"FEHLER: Nicht genügend Signal-Varianten in den Daten für {symbol}, um ein Modell zu trainieren. Training wird übersprungen.")
-        return
-
+    print(f"Starte Training für {symbol}...")
+    
+    features = ['sma_fast', 'sma_slow', 'rsi', 'macd', 'macd_signal', 'atr']
+    target = 'signal'
+    
+    X = df[features]
+    y = df[target]
+    
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
     
     model = RandomForestClassifier(n_estimators=100, random_state=42, class_weight='balanced')
     model.fit(X_train, y_train)
-    print(f"Training für {symbol} abgeschlossen.")
-
-    # Evaluierung auf den Test-Daten
-    y_pred = model.predict(X_test)
-    print(f"\nLeistungsbericht für {symbol} auf Test-Daten:")
-    print(classification_report(y_test, y_pred, target_names=['Verkaufen (-1)', 'Halten (0)', 'Kaufen (1)'], zero_division=0))
-
-    model_filename = f"{symbol.lower()}_model.joblib"
+    
+    print(f"Training für {symbol} abgeschlossen.\n")
+    print(f"Leistungsbericht für {symbol} auf Test-Daten:")
+    print(classification_report(y_test, model.predict(X_test), target_names=['Verkaufen (-1)', 'Halten (0)', 'Kaufen (1)']))
+    
+    # Modellnamen ohne Schrägstrich speichern, z.B. "BTCUSD_model.joblib"
+    safe_symbol_name = symbol.replace('/', '')
+    model_filename = f'models/{safe_symbol_name}_model.joblib'
     joblib.dump(model, model_filename)
     print(f"\nModell als '{model_filename}' gespeichert.")
 
 def push_models_to_github():
-    """Committet und pusht die Modelldateien nach GitHub."""
-    print("Versuche, neue Modelle auf GitHub hochzuladen...")
+    git_user = os.getenv('GIT_USER')
+    git_pat = os.getenv('GIT_PAT')
+    repo_name = os.getenv('GIT_REPO')
+
+    if not all([git_user, git_pat, repo_name]):
+        print("Git-Umgebungsvariablen nicht gesetzt. Überspringe Push.")
+        return
+
     try:
-        git_user = os.getenv('GIT_USER_NAME')
-        git_email = os.getenv('GIT_USER_EMAIL')
-        git_pat = os.getenv('GITHUB_PAT')
-        repo_name = 'andyohneh/finanz-app-backend' # <-- BITTE ANPASSEN, FALLS NÖTIG
-
-        if not all([git_user, git_email, git_pat]):
-            print("Git-Umgebungsvariablen nicht gesetzt. Überspringe Push.")
-            return
-
-        subprocess.run(['git', 'config', '--global', 'user.name', git_user], check=True)
-        subprocess.run(['git', 'config', '--global', 'user.email', git_email], check=True)
-        subprocess.run(['git', 'add', '*.joblib'], check=True)
-
+        print("Versuche, neue Modelle auf GitHub hochzuladen...")
+        subprocess.run(['git', 'config', '--global', 'user.email', 'action@github.com'], check=True)
+        subprocess.run(['git', 'config', '--global', 'user.name', 'GitHub Action'], check=True)
+        subprocess.run(['git', 'add', 'models/'], check=True)
+        
+        # Prüfen, ob es Änderungen zum Committen gibt
         status_result = subprocess.run(['git', 'status', '--porcelain'], capture_output=True, text=True)
-        if 'M btcusd_model.joblib' not in status_result.stdout and 'M xauusd_model.joblib' not in status_result.stdout:
-            print("Keine neuen Modell-Änderungen zum Hochladen gefunden.")
+        if not status_result.stdout:
+            print("Keine neuen Modell-Änderungen zum Committen gefunden.")
             return
 
-        commit_message = f"Auto-Update: KI-Modelle neu trainiert (Swing-Trading-Strategie) am {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        commit_message = f"KI-Modelle automatisch aktualisiert am {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         subprocess.run(['git', 'commit', '-m', commit_message], check=True)
-
         remote_url = f"https://{git_user}:{git_pat}@github.com/{repo_name}.git"
         subprocess.run(['git', 'push', remote_url], check=True)
-
         print("Modelle erfolgreich auf GitHub hochgeladen!")
     except Exception as e:
         print(f"Ein Fehler beim Git-Push ist aufgetreten: {e}")
 
+def main():
+    # KORREKTUR: Hier müssen die Symbole das Format der Datenbank haben!
+    SYMBOLS = ['BTC/USD', 'XAU/USD']
+    
+    for symbol in SYMBOLS:
+        process_symbol(symbol)
+        
+    push_models_to_github()
+    print("\n--- Nächtliches Training beendet. ---")
+
 def process_symbol(symbol: str):
     print(f"\n--- Starte Verarbeitung für {symbol} ---")
     df = load_data_from_db(symbol)
-    if not df.empty and len(df) > 250: # Brauchen genug Daten für 240min Lookahead
+    if not df.empty and len(df) > 250:
         df_features = add_features(df)
-        
-        # --- HIER IST DIE STRATEGIE-ÄNDERUNG ---
-        # Wir schauen 240 Minuten (4 Std) in die Zukunft und verlangen eine Bewegung von 0.3%
         df_final = add_labels(df_features, future_periods=240, percent_change_threshold=0.003)
-        # ----------------------------------------
 
         if not df_final.empty:
             train_and_save_model(df_final, symbol)
@@ -132,11 +129,5 @@ def process_symbol(symbol: str):
     else:
         print(f"Nicht genügend Daten für {symbol}, um das Training zu starten.")
 
-# --- Haupt-Logik ---
 if __name__ == "__main__":
-    symbols_to_process = ['BTCUSD', 'XAUUSD']
-    for symbol in symbols_to_process:
-        process_symbol(symbol)
-    
-    push_models_to_github()
-    print("\n--- Nächtliches Training beendet. ---")
+    main()

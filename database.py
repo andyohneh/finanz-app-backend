@@ -1,4 +1,4 @@
-# database.py (Finale, korrekte Version für V2)
+# database.py (Finale, korrekte und ausführbare Version)
 import os
 from dotenv import load_dotenv
 from sqlalchemy import (create_engine, MetaData, Table, Column, 
@@ -8,7 +8,7 @@ from datetime import datetime
 # Lädt die .env Datei für lokale Tests
 load_dotenv()
 
-# --- DATENBANK-VERBINDUNG ---
+# --- DATENBANK-VERBINDUNG ---\
 DATABASE_URL = os.getenv('DATABASE_URL')
 if not DATABASE_URL:
     raise ValueError("Keine DATABASE_URL in den Umgebungsvariablen gefunden!")
@@ -16,7 +16,7 @@ if not DATABASE_URL:
 engine = create_engine(DATABASE_URL)
 meta = MetaData()
 
-# --- TABELLEN-DEFINITIONEN ---
+# --- TABELLEN-DEFINITIONEN ---\
 
 # Tabelle 1: Für die gesammelten Rohdaten
 historical_data = Table(
@@ -53,7 +53,7 @@ def create_tables():
     except Exception as e:
         print(f"Ein Fehler beim Erstellen der Tabellen ist aufgetreten: {e}")
 
-
-# Dieser Block wird nur ausgeführt, wenn man das Skript direkt startet (z.B. mit 'python database.py')
-if __name__ == "__main__":
+# Dieser Block sorgt dafür, dass create_tables() aufgerufen wird,
+# wenn wir 'python database.py' im Terminal ausführen.
+if __name__ == '__main__':
     create_tables()
