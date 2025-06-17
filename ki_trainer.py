@@ -6,6 +6,7 @@ import os
 import subprocess
 from sqlalchemy import text
 from database import engine
+from datetime import datetime # <-- Die fehlende Zeile
 
 def load_data_from_db(symbol: str, limit: int = 4000):
     """Lädt eine große Menge an Daten für das Training."""
