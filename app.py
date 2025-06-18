@@ -1,3 +1,4 @@
+# app.py (Version mit Bollinger Bändern + Stochastic Oscillator)
 import os
 import joblib
 import pandas as pd
@@ -20,7 +21,7 @@ SYMBOLS = ['BTCUSD', 'XAUUSD']
 def add_features(df):
     """
     Fügt technische Indikatoren hinzu.
-    WICHTIG: Diese Funktion muss exakt identisch sein mit der in ki_trainer.py!
+    Muss immer synchron mit ki_trainer.py sein!
     """
     print("Füge Features zu Live-Daten hinzu...")
     df['sma_fast'] = ta.trend.sma_indicator(df['close'], window=20)
@@ -31,13 +32,11 @@ def add_features(df):
     df['macd_signal'] = macd.macd_signal()
     df['atr'] = ta.volatility.AverageTrueRange(high=df['high'], low=df['low'], close=df['close'], window=14).average_true_range()
 
-    # ### NEU: Die Bollinger Bänder, die dem Trainer bekannt sind ###
     indicator_bb = ta.volatility.BollingerBands(close=df["close"], window=20, window_dev=2)
     df['bb_high_band'] = indicator_bb.bollinger_hband()
     df['bb_low_band'] = indicator_bb.bollinger_lband()
     df['bb_pband'] = indicator_bb.bollinger_pband()
     df['bb_wband'] = indicator_bb.bollinger_wband()
-    # ### ENDE NEUER CODEBLOCK ###
 
     df.dropna(inplace=True)
     return df
