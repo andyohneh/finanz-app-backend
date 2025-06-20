@@ -1,6 +1,6 @@
-# app.py (FINALE KÖNIGSKLASSE-VERSION)
+# app.py (Version mit PWA-Unterstützung)
 import os
-from flask import Flask, jsonify, render_template
+from flask import Flask, jsonify, render_template, send_from_directory # NEU: send_from_directory
 from flask_cors import CORS
 from dotenv import load_dotenv
 from sqlalchemy import text
@@ -8,7 +8,8 @@ from database import engine
 
 # --- GRUNDEINSTELLUNGEN ---
 load_dotenv()
-app = Flask(__name__, template_folder='templates')
+# NEU: 'static_folder' hinzugefügt, damit Flask unseren Ordner mit Icons findet
+app = Flask(__name__, template_folder='templates', static_folder='static') 
 CORS(app)
 
 # --- ROUTEN FÜR DAS FRONTEND ---
@@ -18,19 +19,21 @@ def index():
     """Zeigt die Hauptseite (das Dashboard) an."""
     return render_template('index.html')
 
+# NEU: Eine Route, um die manifest.json-Datei bereitzustellen
+@app.route('/manifest.json')
+def serve_manifest():
+    return send_from_directory(app.root_path, 'manifest.json')
+
 @app.route('/api/assets')
 def get_assets():
-    """
-    Holt die fertigen Vorhersagen direkt aus der Datenbank.
-    Diese Route ist extrem schnell, da keine KI-Berechnungen stattfinden.
-    """
+    """Holt die fertigen Vorhersagen direkt aus der Datenbank."""
+    # Diese Funktion bleibt unverändert...
     print("API-Aufruf /api/assets: Lese fertige Signale aus der Datenbank.")
     assets_data = []
     try:
         with engine.connect() as conn:
             query = text("SELECT * FROM predictions ORDER BY symbol")
             results = conn.execute(query).fetchall()
-
             for row in results:
                 prediction = row._asdict()
                 color, icon = "grey", "circle"
@@ -38,7 +41,6 @@ def get_assets():
                     color, icon = "green", "arrow-up"
                 elif prediction.get('signal') == "Verkaufen":
                     color, icon = "red", "arrow-down"
-
                 assets_data.append({
                     "asset": prediction['symbol'].replace('/', ''),
                     "currentPrice": f"{prediction.get('entry_price'):.2f}" if prediction.get('entry_price') else "N/A",
@@ -49,9 +51,7 @@ def get_assets():
                     "color": color,
                     "icon": icon
                 })
-        
         return jsonify(assets_data)
-        
     except Exception as e:
         print(f"Fehler beim Abrufen der Vorhersagen aus der Datenbank: {e}")
         return jsonify({"error": "Konnte keine Daten von der Datenbank abrufen."}), 500
@@ -59,6 +59,7 @@ def get_assets():
 @app.route('/historical-data/<symbol>')
 def get_historical_data(symbol):
     """Holt die historischen Daten für die Charts."""
+    # Diese Funktion bleibt unverändert...
     db_symbol = f"{symbol[:-3]}/{symbol[-3:]}"
     query = text("SELECT timestamp, close FROM historical_data WHERE symbol = :symbol_param ORDER BY timestamp DESC LIMIT 200")
     try:
