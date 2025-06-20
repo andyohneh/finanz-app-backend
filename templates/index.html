@@ -149,7 +149,7 @@
       // ERWEITERT: populateTable wurde um den Click-Listener erweitert
       async function populateTable() {
         try {
-          const response = await fetch("/data");
+          const response = await fetch("/api/assets");
           if (!response.ok) {
             throw new Error(`HTTP Fehler! Status: ${response.status}`);
           }
