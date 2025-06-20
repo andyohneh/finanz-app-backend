@@ -1,28 +1,28 @@
-# app.py (Version mit PWA-Unterstützung)
+# app.py (FINALE PWA-VERSION)
 import os
-from flask import Flask, jsonify, render_template, send_from_directory # NEU: send_from_directory
+from flask import Flask, jsonify, render_template, send_from_directory
 from flask_cors import CORS
 from dotenv import load_dotenv
 from sqlalchemy import text
 from database import engine
 
-# --- GRUNDEINSTELLUNGEN ---
 load_dotenv()
-# NEU: 'static_folder' hinzugefügt, damit Flask unseren Ordner mit Icons findet
 app = Flask(__name__, template_folder='templates', static_folder='static') 
 CORS(app)
 
-# --- ROUTEN FÜR DAS FRONTEND ---
-
+# Routen
 @app.route('/')
 def index():
-    """Zeigt die Hauptseite (das Dashboard) an."""
     return render_template('index.html')
 
-# NEU: Eine Route, um die manifest.json-Datei bereitzustellen
 @app.route('/manifest.json')
 def serve_manifest():
     return send_from_directory(app.root_path, 'manifest.json')
+
+# NEU: Route für den Service Worker
+@app.route('/sw.js')
+def serve_sw():
+    return send_from_directory(app.static_folder, 'sw.js')
 
 @app.route('/api/assets')
 def get_assets():

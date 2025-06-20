@@ -12,29 +12,34 @@
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css"
     />
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
     <style>
       body {
-        font-family: Arial, sans-serif;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          Helvetica, Arial, sans-serif;
         background-color: #f4f7f9;
         color: #333;
-        margin: 20px;
+        margin: 0;
+        padding: 20px;
         display: flex;
-        justify-content: center;
+        justify-content: flex-start; /* Geändert für bessere Ausrichtung */
         align-items: center;
         flex-direction: column;
+        min-height: 100vh;
       }
       h1 {
         color: #0056b3;
         text-align: center;
       }
       .container {
-        width: 90%;
+        width: 95%;
         max-width: 1000px;
         background-color: #fff;
         padding: 20px;
         border-radius: 8px;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        box-shadow: 0 4px orchestrate rgba(0, 0, 0, 0.05);
         margin-bottom: 20px;
+        overflow-x: auto; /* Sorgt für Scrollbarkeit auf kleinen Bildschirmen */
       }
       table {
         width: 100%;
@@ -44,20 +49,34 @@
       th,
       td {
         padding: 12px 15px;
-        border: 1px solid #ddd;
+        border-bottom: 1px solid #ddd;
         text-align: left;
+        white-space: nowrap; /* Verhindert unschönen Zeilenumbruch */
       }
       th {
         background-color: #007bff;
         color: white;
+        position: sticky;
+        top: 0;
       }
       tr:hover {
-        background-color: #f1f1f1;
+        background-color: #e9ecef;
         cursor: pointer;
       }
-      /* Stil für den Chart-Container, damit er gut aussieht */
-      #chartContainer h2 {
-        color: #333;
+      #chart-container {
+        width: 95%;
+        max-width: 1000px;
+        height: 40vh; /* Relative Höhe für bessere Skalierung */
+        background-color: #fff;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+      }
+      .loading-text {
+        text-align: center;
+        padding: 20px;
+        color: #777;
+        font-style: italic;
       }
     </style>
   </head>
@@ -65,7 +84,6 @@
     <h1>KI-basierte Handelssignale</h1>
 
     <div class="container">
-      <h2>Live Daten</h2>
       <table>
         <thead>
           <tr>
@@ -77,127 +95,145 @@
             <th>Signal</th>
           </tr>
         </thead>
-        <tbody id="finance-data"></tbody>
+        <tbody id="financial-data"></tbody>
       </table>
     </div>
 
-    <div class="container" id="chartContainer">
-      <h2>Kursverlauf</h2>
-      <canvas id="priceChart"></canvas>
+    <div id="chart-container">
+      <canvas id="financial-chart"></canvas>
     </div>
 
     <script>
-      const tableBody = document.getElementById("finance-data");
-      const chartTitleElement = document.querySelector("#chartContainer h2");
+      let financialChart; // Globale Variable für das Chart
 
-      // NEU: Globale Variable für unser Chart-Objekt
-      let priceChart;
-
-      // NEU: Funktion zum initialen Erstellen des leeren Charts
+      // Funktion zum Initialisieren des Charts
       function initChart() {
-        const ctx = document.getElementById("priceChart").getContext("2d");
-        priceChart = new Chart(ctx, {
-          type: "line", // Linien-Chart
+        const ctx = document.getElementById("financial-chart").getContext("2d");
+        financialChart = new Chart(ctx, {
+          type: "line",
           data: {
-            labels: [], // Startet ohne Labels
+            labels: [],
             datasets: [
               {
-                label: "Schlusskurs",
-                data: [], // Startet ohne Daten
+                label: "Kursverlauf (Letzte 200 Min.)",
+                data: [],
                 borderColor: "#007bff",
-                backgroundColor: "rgba(0, 123, 255, 0.1)",
+                tension: 0.1,
                 borderWidth: 2,
-                tension: 0.1, // Macht die Linie etwas weicher
-                fill: true,
+                pointRadius: 0,
               },
             ],
           },
           options: {
             responsive: true,
-            maintainAspectRatio: true,
+            maintainAspectRatio: false,
             scales: {
-              y: { beginAtZero: false }, // Y-Achse muss nicht bei 0 starten
+              y: {
+                beginAtZero: false,
+              },
             },
           },
         });
       }
 
-      // NEU: Funktion zum Holen von Daten und Aktualisieren des Charts
+      // Funktion zum Aktualisieren des Charts mit neuen Daten
       async function updateChart(symbol) {
-        console.log(`Chart wird für ${symbol} aktualisiert...`);
-        chartTitleElement.textContent = `Kursverlauf für ${symbol}`;
         try {
           const response = await fetch(`/historical-data/${symbol}`);
-          if (!response.ok) {
-            throw new Error(`Serverfehler: ${response.status}`);
-          }
+          if (!response.ok) throw new Error("Netzwerk-Antwort war nicht ok.");
           const chartData = await response.json();
+          if (chartData.error) throw new Error(chartData.error);
 
-          if (chartData.error) {
-            throw new Error(chartData.error);
-          }
-
-          // Füttere die neuen Daten in den Chart
-          priceChart.data.labels = chartData.labels;
-          priceChart.data.datasets[0].data = chartData.data;
-          priceChart.update(); // Zeichne den Chart neu
-          console.log(`Chart für ${symbol} erfolgreich aktualisiert.`);
+          financialChart.data.labels = chartData.labels;
+          financialChart.data.datasets[0].data = chartData.data;
+          financialChart.data.datasets[0].label = `${symbol} Kursverlauf`;
+          financialChart.update();
         } catch (error) {
-          console.error("Fehler beim Aktualisieren des Charts:", error);
-          chartTitleElement.textContent = `Fehler beim Laden von ${symbol}`;
+          console.error(
+            `Fehler beim Laden der Chart-Daten für ${symbol}:`,
+            error
+          );
         }
       }
 
-      // ERWEITERT: populateTable wurde um den Click-Listener erweitert
+      // Funktion zum Füllen der Tabelle
       async function populateTable() {
+        const tableBody = document.getElementById("financial-data");
+        // Nur "Lade Daten..." anzeigen, wenn die Tabelle leer ist
+        if (tableBody.innerHTML === "") {
+          tableBody.innerHTML =
+            '<tr><td colspan="6" class="loading-text">Lade Daten...</td></tr>';
+        }
         try {
           const response = await fetch("/api/assets");
-          if (!response.ok) {
-            throw new Error(`HTTP Fehler! Status: ${response.status}`);
-          }
+          if (!response.ok) throw new Error("Netzwerk-Antwort war nicht ok.");
           const assets = await response.json();
-          tableBody.innerHTML = ""; // Leert die Tabelle vor dem Neuaufbau
+          if (assets.error) throw new Error(assets.error);
+
+          tableBody.innerHTML = ""; // Leere die Tabelle vor dem Füllen
 
           assets.forEach((data) => {
             const row = document.createElement("tr");
-            if (data.color === "green") row.style.backgroundColor = "#e9f7ef";
+
+            // Färbe die Zeile basierend auf dem Signal
+            if (data.color === "green") row.style.backgroundColor = "#eaf7ea";
             else if (data.color === "red")
               row.style.backgroundColor = "#fbe9e7";
-            else if (data.color === "grey")
-              row.style.backgroundColor = "#f8f9fa";
 
-            row.innerHTML = `<td><strong>${data.asset}</strong></td><td>${
-              data.currentPrice
-            }</td><td>${data.entry}</td><td>${data.takeProfit}</td><td>${
-              data.stopLoss
-            }</td><td>${data.signal} ${
-              data.icon
+            row.innerHTML = `
+                <td><strong>${data.asset}</strong></td>
+                <td>${data.currentPrice}</td>
+                <td>${data.entry}</td>
+                <td>${data.takeProfit}</td>
+                <td>${data.stopLoss}</td>
+                <td>${data.signal} ${
+              data.icon && data.icon !== "circle"
                 ? `<i class="fas fa-${data.icon}" style="margin-left: 8px;"></i>`
                 : ""
             }</td>`;
+
             tableBody.appendChild(row);
 
-            // NEU: Füge den Click-Listener zu jeder Zeile hinzu
+            // Füge den Click-Listener zu jeder Zeile hinzu
             row.addEventListener("click", () => {
               updateChart(data.asset);
             });
           });
         } catch (error) {
           console.error("Fehler beim Laden der Finanzdaten:", error);
-          tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: red;">Fehler: ${error.message}</td></tr>`;
+          tableBody.innerHTML = `<tr><td colspan="6" class="loading-text" style="color: red;">Fehler beim Laden der Daten.</td></tr>`;
         }
       }
 
-      // NEU: Code, der ausgeführt wird, wenn die Seite komplett geladen ist
-      document.addEventListener("DOMContentLoaded", (event) => {
-        initChart(); // 1. Leeren Chart erstellen
-        populateTable(); // 2. Tabelle füllen
+      // Code, der ausgeführt wird, wenn die Seite komplett geladen ist
+      document.addEventListener("DOMContentLoaded", () => {
+        initChart();
+        populateTable();
 
-        // 3. Chart mit den Daten für XAUUSD (dein Fokus-Asset) füllen
-        updateChart("XAUUSD");
-
-        setInterval(populateTable, 60000); // 4. Tabelle alle 60s aktualisieren
+        // Aktualisiere die Tabelle alle 60 Sekunden
+        setInterval(populateTable, 60000);
       });
+    </script>
+
+    <script>
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker
+            .register("/sw.js")
+            .then((registration) => {
+              console.log(
+                "Service Worker erfolgreich registriert:",
+                registration
+              );
+            })
+            .catch((error) => {
+              console.log(
+                "Fehler bei der Registrierung des Service Workers:",
+                error
+              );
+            });
+        });
+      }
     </script>
   </body>
 </html>
