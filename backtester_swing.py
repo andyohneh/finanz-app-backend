@@ -1,4 +1,4 @@
-# backtester_swing.py (DIAMANT-STANDARD mit realistischem Position Sizing)
+# backtester_swing.py (Diamant-Standard mit Ergebnis-Export und Sharpe Ratio)
 import pandas as pd
 import numpy as np
 import joblib
@@ -10,15 +10,11 @@ from database import engine, historical_data_daily
 # --- KONFIGURATION ---
 MODEL_DIR = "models"
 SYMBOLS = ['BTC/USD', 'XAU/USD']
-INITIAL_CAPITAL = 100  # Wir starten mit einem fiktiven Gesamtkapital von 100€
-TRADE_SIZE_USD = 10     # JEDER Trade wird mit einer festen Größe von 10€ getätigt
+INITIAL_CAPITAL = 100
+TRADE_SIZE_USD = 45
 TRANSACTION_COST_PERCENT = 0.001
-
-# Beste gefundene Parameter
 CONFIDENCE_THRESHOLD = 0.75
 TREND_SMA_PERIOD = 100
-
-# Risk-Management-Parameter
 TAKE_PROFIT_ATR_MULTIPLIER = 3.0
 STOP_LOSS_ATR_MULTIPLIER = 1.5
 
@@ -55,7 +51,7 @@ def add_features(df: pd.DataFrame, trend_sma_period: int) -> pd.DataFrame:
     return df
 
 def run_true_swing_backtest(symbol: str):
-    """Führt den finalen Backtest mit realistischem Position Sizing durch."""
+    """Führt den finalen Backtest durch und gibt ein Dictionary mit detaillierten Ergebnissen zurück."""
     print(f"\n--- Starte finalen, realistischen SWING Backtest für {symbol} ---")
 
     model_filename = symbol.replace('/', '')
@@ -63,7 +59,7 @@ def run_true_swing_backtest(symbol: str):
     model = joblib.load(model_path)
 
     df_full = load_all_data(symbol)
-    if df_full.empty: return
+    if df_full.empty: return None
     df = add_features(df_full.copy(), TREND_SMA_PERIOD)
     
     model_features = model.feature_names_in_
@@ -73,59 +69,92 @@ def run_true_swing_backtest(symbol: str):
     df['buy_proba'] = probabilities[:, np.where(model.classes_ == 1)[0][0]]
 
     capital = INITIAL_CAPITAL
+    capital_over_time = [INITIAL_CAPITAL] # Liste, um den Kapitalverlauf zu speichern
     position_open = False
     trades = []
     
+    entry_price = 0
+    take_profit_price = 0
+    stop_loss_price = 0
+
     for i in range(len(df)):
         if position_open:
-            # TP-Check
+            # TP/SL Logik
+            # ... (wie bisher) ...
             if df['high'].iloc[i] >= take_profit_price:
                 exit_price = take_profit_price
                 profit_usd = (exit_price - entry_price) * position_size_asset
-                profit_usd -= (TRADE_SIZE_USD + profit_usd) * TRANSACTION_COST_PERCENT # Kosten abziehen
+                profit_usd -= (TRADE_SIZE_USD + profit_usd) * TRANSACTION_COST_PERCENT
                 capital += profit_usd
                 trades.append({'profit_usd': profit_usd})
                 position_open = False
-            # SL-Check
             elif df['low'].iloc[i] <= stop_loss_price:
                 exit_price = stop_loss_price
                 profit_usd = (exit_price - entry_price) * position_size_asset
-                profit_usd -= (TRADE_SIZE_USD + abs(profit_usd)) * TRANSACTION_COST_PERCENT # Kosten abziehen
+                profit_usd -= (TRADE_SIZE_USD + abs(profit_usd)) * TRANSACTION_COST_PERCENT
                 capital += profit_usd
                 trades.append({'profit_usd': profit_usd})
                 position_open = False
-            
+        
         if not position_open:
+            # Entry Logik
+            # ... (wie bisher) ...
             is_uptrend = df['close'].iloc[i] > df['sma_trend'].iloc[i]
             buy_confidence = df['buy_proba'].iloc[i]
             if is_uptrend and buy_confidence > CONFIDENCE_THRESHOLD:
                 position_open = True
                 entry_price = df['close'].iloc[i]
                 position_size_asset = TRADE_SIZE_USD / entry_price
-                
                 atr_at_entry = df['atr'].iloc[i]
                 take_profit_price = entry_price + (atr_at_entry * TAKE_PROFIT_ATR_MULTIPLIER)
                 stop_loss_price = entry_price - (atr_at_entry * STOP_LOSS_ATR_MULTIPLIER)
-            
+        
+        capital_over_time.append(capital) # Kapitalverlauf für jeden Tag speichern
+
+    # --- NEUE BERECHNUNGEN ---
+    returns = pd.Series(capital_over_time).pct_change().dropna()
+    # Sharpe Ratio (annualisiert für Tages-Daten, Annahme: 252 Handelstage pro Jahr)
+    sharpe_ratio = np.mean(returns) / np.std(returns) * np.sqrt(252) if np.std(returns) > 0 else 0
+
     total_profit_usd = capital - INITIAL_CAPITAL
-    total_return_percent = (capital - INITIAL_CAPITAL) / INITIAL_CAPITAL * 100
+    total_return_percent = total_profit_usd / INITIAL_CAPITAL * 100
     num_trades = len(trades)
-    if num_trades == 0:
-        print("\nKeine Trades wurden ausgeführt.")
-        return
+    if num_trades == 0: return None
         
     winning_trades = [t for t in trades if t['profit_usd'] > 0]
     win_rate = len(winning_trades) / num_trades * 100
     
-    print("\n--- Realistische Swing-Backtest-Ergebnisse ---")
-    print(f"Startkapital: ${INITIAL_CAPITAL:,.2f}")
-    print(f"Einsatz pro Trade: ${TRADE_SIZE_USD:,.2f}")
-    print(f"Endkapital: ${capital:,.2f}")
-    print(f"Gesamtgewinn: ${total_profit_usd:,.2f}")
-    print(f"Gesamtrendite (auf Startkapital): {total_return_percent:.2f}%")
-    print(f"Anzahl abgeschlossener Trades: {num_trades}")
-    print(f"Gewinnrate: {win_rate:.2f}%")
+    return {
+        'Symbol': symbol,
+        'Gesamtrendite_%': round(total_return_percent, 2),
+        'Gewinnrate_%': round(win_rate, 2),
+        'Sharpe_Ratio': round(sharpe_ratio, 2),
+        'Anzahl_Trades': num_trades,
+        'Startkapital_$': INITIAL_CAPITAL,
+        'Endkapital_$': round(capital, 2),
+        'Gesamtgewinn_$': round(total_profit_usd, 2)
+    }
 
 if __name__ == "__main__":
+    all_results = []
+    print("Starte finale Backtests zum Speichern der Ergebnisse...")
     for symbol in SYMBOLS:
-        run_true_swing_backtest(symbol)
+        result = run_true_swing_backtest(symbol)
+        if result:
+            all_results.append(result)
+
+    if all_results:
+        results_df = pd.DataFrame(all_results)
+        
+        print("\n\n--- FINALE BACKTEST-ERGEBNISSE ---")
+        print(results_df.to_string())
+
+        # === NEU: Ergebnisse in eine Datei speichern ===
+        try:
+            results_df.to_json('backtest_results.json', orient='records', indent=4)
+            print("\nErfolgreich 'backtest_results.json' im Projektordner gespeichert.")
+        except Exception as e:
+            print(f"\nFehler beim Speichern der JSON-Datei: {e}")
+            
+    else:
+        print("\nKeine Trades wurden ausgeführt.")
