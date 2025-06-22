@@ -1,22 +1,22 @@
 [
     {
         "Symbol":"BTC\/USD",
-        "Gesamtrendite_%":479.19,
-        "Gewinnrate_%":76.19,
-        "Sharpe_Ratio":1.77,
-        "Anzahl_Trades":147,
-        "Startkapital_$":100,
-        "Endkapital_$":579.19,
-        "Gesamtgewinn_$":479.19
+        "Konfidenz":"0.75",
+        "Trend_Periode":150,
+        "Rendite_%":85.24,
+        "Gewinnrate_%":77.54,
+        "Sharpe_Ratio":2.06,
+        "Anzahl_Trades":187,
+        "Endkapital_$":185.24
     },
     {
         "Symbol":"XAU\/USD",
-        "Gesamtrendite_%":157.84,
-        "Gewinnrate_%":76.92,
-        "Sharpe_Ratio":1.61,
-        "Anzahl_Trades":130,
-        "Startkapital_$":100,
-        "Endkapital_$":257.84,
-        "Gesamtgewinn_$":157.84
+        "Konfidenz":"0.75",
+        "Trend_Periode":150,
+        "Rendite_%":34.27,
+        "Gewinnrate_%":81.91,
+        "Sharpe_Ratio":2.0,
+        "Anzahl_Trades":188,
+        "Endkapital_$":134.27
     }
 ]

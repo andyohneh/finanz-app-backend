@@ -27,7 +27,7 @@ def dashboard():
         print(f"Fehler beim Laden von backtest_result.json: {e}")
     
     try:
-        # KORREKTUR: Öffnet 'backtest_results_4h.json' für die 4-Stunden-Daten
+        # Öffnet 'backtest_results_4h.json' für die 4-Stunden-Daten
         with open('backtest_results_4h.json', 'r', encoding='utf-8') as f:
             results['four_hour'] = json.load(f)
     except Exception as e:
@@ -38,8 +38,10 @@ def dashboard():
 # ... Der Rest der app.py bleibt unverändert ...
 @app.route('/manifest.json')
 def serve_manifest(): return send_from_directory(app.root_path, 'manifest.json')
+
 @app.route('/sw.js')
 def serve_sw(): return send_from_directory(app.static_folder, 'sw.js')
+
 @app.route('/api/assets')
 def get_assets():
     assets_data = []
@@ -54,6 +56,7 @@ def get_assets():
                 assets_data.append({ "asset": prediction['symbol'].replace('/', ''), "entry": f"{prediction.get('entry_price'):.2f}" if prediction.get('entry_price') else "N/A", "takeProfit": f"{prediction.get('take_profit'):.2f}" if prediction.get('take_profit') else "N/A", "stopLoss": f"{prediction.get('stop_loss'):.2f}" if prediction.get('stop_loss') else "N/A", "signal": prediction.get('signal'), "color": color, "icon": icon })
         return jsonify(assets_data)
     except Exception as e: return jsonify({"error": "Konnte keine Live-Daten abrufen."}), 500
+
 @app.route('/historical-data/<symbol>')
 def get_historical_data(symbol):
     db_symbol = f"{symbol[:-3]}/{symbol[-3:]}"
@@ -66,6 +69,7 @@ def get_historical_data(symbol):
         data_points = [row[1] for row in result]
         return jsonify({"labels": labels, "data": data_points})
     except Exception as e: return jsonify({"error": "Konnte Chart-Daten nicht laden."}), 500
+
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
     app.run(debug=False, host='0.0.0.0', port=port)
