@@ -20,6 +20,7 @@ def load_data_from_db(symbol: str):
     print(f"Lade alle 4-Stunden-Daten für {symbol} aus der Datenbank...")
     try:
         with engine.connect() as conn:
+            # WICHTIG: Greift auf die 'historical_data_4h' Tabelle zu
             query = text("SELECT * FROM historical_data_4h WHERE symbol = :symbol ORDER BY timestamp ASC")
             df = pd.read_sql_query(query, conn, params={'symbol': symbol})
             print(f"Erfolgreich {len(df)} 4h-Datenpunkte geladen.")
