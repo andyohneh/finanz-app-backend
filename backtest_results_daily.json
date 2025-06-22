@@ -1,0 +1,22 @@
+[
+    {
+        "Symbol":"BTC\/USD",
+        "Konfidenz":"0.75",
+        "Trend_Periode":150,
+        "Rendite_%":85.24,
+        "Gewinnrate_%":77.54,
+        "Sharpe_Ratio":2.06,
+        "Anzahl_Trades":187,
+        "Endkapital_$":185.24
+    },
+    {
+        "Symbol":"XAU\/USD",
+        "Konfidenz":"0.75",
+        "Trend_Periode":150,
+        "Rendite_%":34.27,
+        "Gewinnrate_%":81.91,
+        "Sharpe_Ratio":2.0,
+        "Anzahl_Trades":188,
+        "Endkapital_$":134.27
+    }
+]
