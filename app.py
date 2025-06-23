@@ -39,8 +39,10 @@ def dashboard():
 @app.route('/manifest.json')
 def serve_manifest(): return send_from_directory(app.root_path, 'manifest.json')
 
-@app.route('/sw.js')
-def serve_sw(): return send_from_directory(app.static_folder, 'sw.js')
+# HIER IST DIE TÜR FÜR DEN BUTLER GESCHLOSSEN
+#@app.route('/sw.js')
+#def serve_sw():
+#    return send_from_directory(app.static_folder, 'sw.js')
 
 @app.route('/api/assets')
 def get_assets():
