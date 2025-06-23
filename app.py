@@ -1,4 +1,4 @@
-# app.py (Finale Version mit Signal-Timestamp im API-Response)
+# app.py (Finale Diamant-Version 1.1 - mit korrekter Chart-Datenquelle)
 import os
 import json
 from flask import Flask, jsonify, render_template, send_from_directory 
@@ -35,7 +35,6 @@ def serve_manifest(): return send_from_directory(app.root_path, 'manifest.json')
 
 @app.route('/api/assets')
 def get_assets():
-    """Holt die fertigen Live-Signale inkl. Timestamp aus der Datenbank."""
     assets_data = []
     try:
         with engine.connect() as conn:
@@ -45,8 +44,6 @@ def get_assets():
                 prediction = row._asdict()
                 color, icon = "grey", "circle"
                 if prediction.get('signal') == "Kaufen": color, icon = "green", "arrow-up"
-                
-                # WICHTIGE ÄNDERUNG: Wir fügen den 'last_updated' Timestamp hinzu
                 assets_data.append({ 
                     "asset": prediction['symbol'].replace('/', ''), 
                     "entry": f"{prediction.get('entry_price'):.2f}" if prediction.get('entry_price') else "N/A", 
@@ -55,23 +52,29 @@ def get_assets():
                     "signal": prediction.get('signal'), 
                     "color": color, 
                     "icon": icon,
-                    # NEU: Der Zeitstempel des Signals
-                    "timestamp": prediction['last_updated'].strftime('%Y-%m-%d')
+                    "timestamp": prediction['last_updated'].strftime('%Y-%m-%d %H:%M:%S')
                 })
         return jsonify(assets_data)
     except Exception as e:
         print(f"Fehler in /api/assets: {e}")
         return jsonify({"error": "Konnte keine Live-Daten abrufen."}), 500
 
-# ... Der Rest der app.py bleibt unverändert ...
+# Route für Chart-Daten
 @app.route('/historical-data/<symbol>')
 def get_historical_data(symbol):
+    """Holt die historischen 4H-Daten für die Charts."""
     db_symbol = f"{symbol[:-3]}/{symbol[-3:]}"
-    query = text("SELECT timestamp, close FROM historical_data_daily WHERE symbol = :symbol_param ORDER BY timestamp ASC LIMIT 365")
+    
+    # === HIER IST DIE FINALE KORREKTUR ===
+    # Wir lesen jetzt aus der `historical_data_4h` Tabelle, die live aktualisiert wird.
+    query = text("SELECT timestamp, close FROM historical_data_4h WHERE symbol = :symbol_param ORDER BY timestamp DESC LIMIT 365")
+    
     try:
         with engine.connect() as conn:
             result = conn.execute(query, {"symbol_param": db_symbol}).fetchall()
-        labels = [row[0].strftime('%Y-%m-%d') for row in result]
+        result.reverse()
+        # Formatieren des Datums für die Chart-Achse, jetzt mit Uhrzeit
+        labels = [row[0].strftime('%Y-%m-%d %H:%M') for row in result]
         data_points = [row[1] for row in result]
         return jsonify({"labels": labels, "data": data_points})
     except Exception as e:
