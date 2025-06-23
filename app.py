@@ -15,11 +15,6 @@ CORS(app)
 def index():
     return render_template('index.html')
 
-# NACHHER:
-@app.route('/sw.js')
-def serve_sw():
-    return send_from_directory(app.static_folder, 'sw.js')
-
 @app.route('/dashboard')
 def dashboard():
     results = {'daily': [], 'four_hour': []}
@@ -37,6 +32,11 @@ def dashboard():
 
 @app.route('/manifest.json')
 def serve_manifest(): return send_from_directory(app.root_path, 'manifest.json')
+
+# NACHHER:
+@app.route('/sw.js')
+def serve_sw():
+    return send_from_directory(app.static_folder, 'sw.js')
 
 @app.route('/api/assets')
 def get_assets():
