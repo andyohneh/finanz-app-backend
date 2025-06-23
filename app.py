@@ -1,4 +1,4 @@
-# app.py (Finale Diamant-Version 1.1 - mit korrekter Chart-Datenquelle)
+# app.py (Finale Diamant-Version 1.2 - mit Chart-Zoom)
 import os
 import json
 from flask import Flask, jsonify, render_template, send_from_directory 
@@ -49,9 +49,7 @@ def get_assets():
                     "entry": f"{prediction.get('entry_price'):.2f}" if prediction.get('entry_price') else "N/A", 
                     "takeProfit": f"{prediction.get('take_profit'):.2f}" if prediction.get('take_profit') else "N/A", 
                     "stopLoss": f"{prediction.get('stop_loss'):.2f}" if prediction.get('stop_loss') else "N/A", 
-                    "signal": prediction.get('signal'), 
-                    "color": color, 
-                    "icon": icon,
+                    "signal": prediction.get('signal'), "color": color, "icon": icon,
                     "timestamp": prediction['last_updated'].strftime('%Y-%m-%d %H:%M:%S')
                 })
         return jsonify(assets_data)
@@ -59,21 +57,19 @@ def get_assets():
         print(f"Fehler in /api/assets: {e}")
         return jsonify({"error": "Konnte keine Live-Daten abrufen."}), 500
 
-# Route für Chart-Daten
 @app.route('/historical-data/<symbol>')
 def get_historical_data(symbol):
     """Holt die historischen 4H-Daten für die Charts."""
     db_symbol = f"{symbol[:-3]}/{symbol[-3:]}"
     
-    # === HIER IST DIE FINALE KORREKTUR ===
-    # Wir lesen jetzt aus der `historical_data_4h` Tabelle, die live aktualisiert wird.
-    query = text("SELECT timestamp, close FROM historical_data_4h WHERE symbol = :symbol_param ORDER BY timestamp DESC LIMIT 365")
+    # === HIER IST DIE FINALE SCHÖNHEITSREPARATUR ===
+    # Wir holen jetzt nur noch die letzten 60 Datenpunkte (entspricht 10 Tagen bei 4h-Intervall)
+    query = text("SELECT timestamp, close FROM historical_data_4h WHERE symbol = :symbol_param ORDER BY timestamp DESC LIMIT 60")
     
     try:
         with engine.connect() as conn:
             result = conn.execute(query, {"symbol_param": db_symbol}).fetchall()
         result.reverse()
-        # Formatieren des Datums für die Chart-Achse, jetzt mit Uhrzeit
         labels = [row[0].strftime('%Y-%m-%d %H:%M') for row in result]
         data_points = [row[1] for row in result]
         return jsonify({"labels": labels, "data": data_points})
