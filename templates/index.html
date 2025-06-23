@@ -13,8 +13,7 @@
 
     <style>
       body {
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-          Helvetica, Arial, sans-serif;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
         background-color: #f4f7f9;
         color: #333;
         margin: 0;
@@ -29,7 +28,7 @@
         color: #0056b3;
         text-align: center;
       }
-       .nav-link { 
+      .nav-link { 
         text-align: center; 
         font-size: 1.2em; 
         margin-bottom: 10px; 
@@ -125,9 +124,10 @@
         try {
           const response = await fetch(`/historical-data/${symbol}`);
           const chartData = await response.json();
+          if (chartData.error) throw new Error(chartData.error);
           financialChart.data.labels = chartData.labels;
           financialChart.data.datasets[0].data = chartData.data;
-          financialChart.data.datasets[0].label = `${symbol} Kursverlauf`;
+          financialChart.data.datasets[0].label = `${symbol} Kursverlauf (4H)`;
           financialChart.data.datasets[1].data = []; // Marker zurücksetzen
           financialChart.update();
         } catch (error) {
@@ -136,20 +136,25 @@
       }
 
       function addSignalMarker(signalData) {
-        const signalIndex = financialChart.data.labels.indexOf(signalData.timestamp);
+        const signalDate = signalData.timestamp.split(' ')[0];
+        const signalIndex = financialChart.data.labels.findIndex(label => label.startsWith(signalDate));
+        
         const markerCount = financialChart.data.labels.length;
         financialChart.data.datasets[1].data = new Array(markerCount).fill(null);
         
         if (signalIndex !== -1 && signalData.signal !== "Halten") {
           financialChart.data.datasets[1].data[signalIndex] = parseFloat(signalData.entry);
-          if (signalData.signal === "Kaufen") {
-            financialChart.data.datasets[1].borderColor = '#28a745';
-            financialChart.data.datasets[1].backgroundColor = '#28a745';
-          } else { // Verkaufen
-            financialChart.data.datasets[1].pointStyle = 'rectRot';
-            financialChart.data.datasets[1].borderColor = '#dc3545';
-            financialChart.data.datasets[1].backgroundColor = '#dc3545';
+          
+          let markerColor = '#28a745';
+          let markerStyle = 'triangle';
+
+          if (signalData.signal === "Verkaufen") {
+            markerColor = '#dc3545';
+            markerStyle = 'rectRot';
           }
+          financialChart.data.datasets[1].borderColor = markerColor;
+          financialChart.data.datasets[1].backgroundColor = markerColor;
+          financialChart.data.datasets[1].pointStyle = markerStyle;
         }
         financialChart.update();
       }
@@ -162,6 +167,7 @@
         try {
           const response = await fetch("/api/assets");
           const assets = await response.json();
+          if (assets.error) throw new Error(assets.error);
           tableBody.innerHTML = "";
           assets.forEach((data) => {
             const row = document.createElement("tr");
@@ -182,6 +188,11 @@
               });
             });
           });
+          
+          if (assets.length > 0 && (!financialChart.data.datasets[0].label || financialChart.data.datasets[0].label === 'Kursverlauf')) {
+              const firstAsset = assets[0];
+              updateChart(firstAsset.asset).then(() => addSignalMarker(firstAsset));
+          }
         } catch (error) {
           console.error("Fehler beim Laden der Finanzdaten:", error);
           tableBody.innerHTML = `<tr><td colspan="5" class="loading-text" style="color: red;">Fehler beim Laden der Daten.</td></tr>`;
@@ -195,10 +206,10 @@
         const targetHours = [0, 4, 8, 12, 16, 20];
         let nextTargetHour = targetHours.find(h => h > currentUTCHour);
         if (nextTargetHour === undefined) {
-          nextTargetHour = 24;
+          nextTargetHour = 24; 
         }
         const targetTime = new Date(now);
-        targetTime.setUTCHours(nextTargetHour, 5, 0, 0);
+        targetTime.setUTCHours(nextTargetHour, 5, 0, 0); 
         if(targetTime < now) {
             targetTime.setUTCDate(targetTime.getUTCDate() + 1);
             targetTime.setUTCHours(targetHours[0], 5, 0, 0);
