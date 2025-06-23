@@ -1,80 +1,37 @@
-// static/sw.js (Version mit "Stale-While-Revalidate" Caching-Strategie)
+// static/sw.js (Minimalistischer Postbote - NUR für Push-Nachrichten)
 
-const CACHE_NAME = 'ki-finanz-app-cache-v2'; // WICHTIG: Neue Versionsnummer!
-const urlsToCache = [
-  '/',
-  '/dashboard',
-  '/manifest.json',
-  '/static/icon-192.png',
-  '/static/icon-512.png'
-];
+console.log('Service Worker (Postbote) Skript geladen.');
 
-// Installation: Die statischen Haupt-Assets werden in den Cache gelegt.
+// Bei der Installation warten wir nicht, wir sind sofort bereit.
 self.addEventListener('install', event => {
-  console.log('Service Worker: Installiere neue Version...');
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => {
-        console.log('Cache geöffnet, füge Kern-Assets hinzu.');
-        return cache.addAll(urlsToCache);
-      })
-  );
+  console.log('Postbote: Beginne meinen Dienst.');
   self.skipWaiting();
 });
 
-// Aktivierung: Alte Caches werden aufgeräumt.
+// Bei der Aktivierung übernehmen wir die Kontrolle über die Seite.
 self.addEventListener('activate', event => {
-  console.log('Service Worker: Aktiviere neue Version...');
-  const cacheWhitelist = [CACHE_NAME];
-  event.waitUntil(
-    caches.keys().then(cacheNames => {
-      return Promise.all(
-        cacheNames.map(cacheName => {
-          if (cacheWhitelist.indexOf(cacheName) === -1) {
-            console.log('Service Worker: Lösche alten Cache:', cacheName);
-            return caches.delete(cacheName);
-          }
-        })
-      );
-    })
-  );
-  return self.clients.claim();
+  console.log('Postbote: Bin jetzt aktiv und bereit für Post.');
+  event.waitUntil(self.clients.claim());
 });
 
-
-// Fetch: Hier passiert die "Stale-While-Revalidate"-Magie.
+// WICHTIG: Der Fetch-Handler ist leer. Er greift NICHT in das Caching ein.
+// Deine Seite wird immer direkt vom Server geladen.
 self.addEventListener('fetch', event => {
-  // Wir wenden diese Strategie nur auf GET-Requests an.
-  if (event.request.method !== 'GET') {
-    return;
-  }
+  return; 
+});
 
-  // Für API-Daten und Chart-Daten wollen wir immer die neuesten Daten (Network First).
-  if (event.request.url.includes('/api/') || event.request.url.includes('/historical-data/')) {
-    event.respondWith(
-      fetch(event.request).catch(() => {
-        // Optional: Hier könnte man eine Offline-JSON-Antwort zurückgeben
-        console.log('API-Anfrage fehlgeschlagen (offline).');
-      })
-    );
-    return;
-  }
+// HIER kommt die Logik für den Empfang von Push-Nachrichten von Firebase.
+self.addEventListener('push', event => {
+  console.log('Postbote: Push-Nachricht empfangen!', event.data.text());
   
-  // Für alle anderen Anfragen (Seiten, CSS, JS, Bilder) nutzen wir Stale-While-Revalidate.
-  event.respondWith(
-    caches.open(CACHE_NAME).then(cache => {
-      return cache.match(event.request).then(response => {
-        // 1. Gib die gecachte Antwort SOFORT zurück, falls vorhanden.
-        const fetchPromise = fetch(event.request).then(networkResponse => {
-          // 2. Gleichzeitig: Hole die neue Version vom Server.
-          // 3. Aktualisiere den Cache mit der neuen Version für das nächste Mal.
-          cache.put(event.request, networkResponse.clone());
-          return networkResponse;
-        });
+  const pushData = JSON.parse(event.data.text());
 
-        // Gib die gecachte Version zurück, während im Hintergrund das Update läuft.
-        return response || fetchPromise;
-      });
-    })
-  );
+  const title = pushData.title || 'Neues KI-Signal!';
+  const options = {
+    body: pushData.body,
+    icon: '/static/icon-192.png',
+    badge: '/static/icon-192.png' // Icon für die Benachrichtigungsleiste
+  };
+
+  event.waitUntil(self.registration.showNotification(title, options));
 });

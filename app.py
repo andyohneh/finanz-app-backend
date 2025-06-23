@@ -15,6 +15,11 @@ CORS(app)
 def index():
     return render_template('index.html')
 
+# NACHHER:
+@app.route('/sw.js')
+def serve_sw():
+    return send_from_directory(app.static_folder, 'sw.js')
+
 @app.route('/dashboard')
 def dashboard():
     results = {'daily': [], 'four_hour': []}

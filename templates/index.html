@@ -1,291 +1,61 @@
 <!DOCTYPE html>
 <html lang="de">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>KI Finanz-Signale</title>
-    <link rel="manifest" href="/manifest.json" />
-    <link
-      rel="stylesheet"
-      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css"
-    />
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
-    <style>
-      body {
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-          Helvetica, Arial, sans-serif;
-        background-color: #f4f7f9;
-        color: #333;
-        margin: 0;
-        padding: 20px;
-        display: flex;
-        justify-content: flex-start;
-        align-items: center;
-        flex-direction: column;
-        min-height: 100vh;
-      }
-      h1 {
-        color: #0056b3;
-        text-align: center;
-      }
-      .nav-link {
-        text-align: center;
-        font-size: 1.2em;
-        margin-bottom: 10px;
-      }
-      .countdown-container {
-        font-size: 1.1em;
-        font-weight: bold;
-        color: #555;
-        background-color: #e9ecef;
-        padding: 8px 15px;
-        border-radius: 20px;
-        margin: 10px 0 20px 0;
-      }
-      .container {
-        width: 95%;
-        max-width: 1000px;
-        background-color: #fff;
-        padding: 20px;
-        border-radius: 8px;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-        margin-bottom: 20px;
-        overflow-x: auto;
-      }
-      table {
-        width: 100%;
-        border-collapse: collapse;
-        margin-top: 20px;
-      }
-      th,
-      td {
-        padding: 12px 15px;
-        border-bottom: 1px solid #ddd;
-        text-align: left;
-        white-space: nowrap;
-      }
-      th {
-        background-color: #007bff;
-        color: white;
-        position: sticky;
-        top: 0;
-      }
-      tr:hover {
-        background-color: #e9ecef;
-        cursor: pointer;
-      }
-      #chart-container {
-        width: 95%;
-        max-width: 1000px;
-        height: 40vh;
-        background-color: #fff;
-        padding: 20px;
-        border-radius: 8px;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-      }
-      .loading-text {
-        text-align: center;
-        padding: 20px;
-        color: #777;
-        font-style: italic;
-      }
-    </style>
-  </head>
+  <head> </head>
   <body>
-    <h1>KI-basierte Handelssignale</h1>
-    <p class="nav-link">
-      <a href="/dashboard">Zum Analyse-Dashboard</a>
-    </p>
-
-    <div class="countdown-container">
-      Nächstes Signal in: <span id="countdown-timer">--:--:--</span>
-    </div>
-
-    <div class="container">
-      <table>
-        <thead>
-          <tr>
-            <th>Asset</th>
-            <th>Signal-Preis</th>
-            <th>Take Profit</th>
-            <th>Stop Loss</th>
-            <th>Signal</th>
-          </tr>
-        </thead>
-        <tbody id="financial-data"></tbody>
-      </table>
-    </div>
-
-    <div id="chart-container">
-      <canvas id="financial-chart"></canvas>
-    </div>
-
     <script>
-      let financialChart;
+      const VAPID_PUBLIC_KEY = "DEIN_VAPID_PUBLIC_KEY_HIER_EINFÜGEN"; // WICHTIG!
 
-      function initChart() {
-        const ctx = document.getElementById("financial-chart").getContext("2d");
-        financialChart = new Chart(ctx, {
-          type: "line",
-          data: {
-            labels: [],
-            datasets: [
-              {
-                label: "Kursverlauf",
-                data: [],
-                borderColor: "#007bff",
-                tension: 0.1,
-                borderWidth: 2,
-                pointRadius: 0,
-              },
-              {
-                label: "Signal",
-                data: [],
-                pointStyle: "triangle",
-                pointRadius: 8,
-                pointHoverRadius: 10,
-                showLine: false,
-              },
-            ],
-          },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            scales: { y: { beginAtZero: false } },
-          },
-        });
+      function urlBase64ToUint8Array(base64String) {
+        const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+        const base64 = (base64String + padding)
+          .replace(/-/g, "+")
+          .replace(/_/g, "/");
+        const rawData = window.atob(base64);
+        const outputArray = new Uint8Array(rawData.length);
+        for (let i = 0; i < rawData.length; ++i) {
+          outputArray[i] = rawData.charCodeAt(i);
+        }
+        return outputArray;
       }
 
-      async function updateChart(symbol) {
+      async function subscribeUser() {
         try {
-          const response = await fetch(`/historical-data/${symbol}`);
-          const chartData = await response.json();
-          if (chartData.error) throw new Error(chartData.error);
-          financialChart.data.labels = chartData.labels;
-          financialChart.data.datasets[0].data = chartData.data;
-          financialChart.data.datasets[0].label = `${symbol} Kursverlauf (4H)`;
-          financialChart.data.datasets[1].data = []; // Marker zurücksetzen
-          financialChart.update();
-        } catch (error) {
-          console.error(
-            `Fehler beim Laden der Chart-Daten für ${symbol}:`,
-            error
-          );
-        }
-      }
-
-      function addSignalMarker(signalData) {
-        const signalDate = signalData.timestamp.split(" ")[0];
-        const signalIndex = financialChart.data.labels.findIndex((label) =>
-          label.startsWith(signalDate)
-        );
-
-        const markerCount = financialChart.data.labels.length;
-        financialChart.data.datasets[1].data = new Array(markerCount).fill(
-          null
-        );
-
-        if (signalIndex !== -1 && signalData.signal !== "Halten") {
-          financialChart.data.datasets[1].data[signalIndex] = parseFloat(
-            signalData.entry
-          );
-
-          let markerColor = "#28a745";
-          let markerStyle = "triangle";
-
-          if (signalData.signal === "Verkaufen") {
-            markerColor = "#dc3545";
-            markerStyle = "rectRot";
-          }
-          financialChart.data.datasets[1].borderColor = markerColor;
-          financialChart.data.datasets[1].backgroundColor = markerColor;
-          financialChart.data.datasets[1].pointStyle = markerStyle;
-        }
-        financialChart.update();
-      }
-
-      async function populateTable() {
-        const tableBody = document.getElementById("financial-data");
-        if (tableBody.innerHTML === "") {
-          tableBody.innerHTML = `<tr><td colspan="5" class="loading-text">Lade Daten...</td></tr>`;
-        }
-        try {
-          const response = await fetch("/api/assets");
-          const assets = await response.json();
-          if (assets.error) throw new Error(assets.error);
-          tableBody.innerHTML = "";
-          assets.forEach((data) => {
-            const row = document.createElement("tr");
-            if (data.color === "green") row.style.backgroundColor = "#eaf7ea";
-            else if (data.color === "red")
-              row.style.backgroundColor = "#fbe9e7";
-            row.innerHTML = `
-                <td><strong>${data.asset}</strong></td>
-                <td>${data.entry}</td>
-                <td>${data.takeProfit}</td>
-                <td>${data.stopLoss}</td>
-                <td>${data.signal} ${
-              data.icon && data.icon !== "circle"
-                ? `<i class="fas fa-${data.icon}" style="margin-left: 8px;"></i>`
-                : ""
-            }</td>`;
-            tableBody.appendChild(row);
-            row.addEventListener("click", () => {
-              updateChart(data.asset).then(() => {
-                addSignalMarker(data);
-              });
-            });
+          const registration = await navigator.serviceWorker.ready;
+          const subscription = await registration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
           });
 
-          if (
-            assets.length > 0 &&
-            (!financialChart.data.datasets[0].label ||
-              financialChart.data.datasets[0].label === "Kursverlauf")
-          ) {
-            const firstAsset = assets[0];
-            updateChart(firstAsset.asset).then(() =>
-              addSignalMarker(firstAsset)
-            );
-          }
+          await fetch("/api/save-subscription", {
+            method: "POST",
+            body: JSON.stringify(subscription),
+            headers: { "Content-Type": "application/json" },
+          });
+          alert("Push-Benachrichtigungen erfolgreich aktiviert!");
         } catch (error) {
-          console.error("Fehler beim Laden der Finanzdaten:", error);
-          tableBody.innerHTML = `<tr><td colspan="5" class="loading-text" style="color: red;">Fehler beim Laden der Daten.</td></tr>`;
+          console.error("Fehler beim Abonnieren:", error);
+          alert(
+            "Fehler: Push-Benachrichtigungen konnten nicht aktiviert werden."
+          );
         }
       }
 
-      function updateCountdown() {
-        const timerElement = document.getElementById("countdown-timer");
-        const now = new Date();
-        const currentUTCHour = now.getUTCHours();
-        const targetHours = [0, 4, 8, 12, 16, 20];
-        let nextTargetHour = targetHours.find((h) => h > currentUTCHour);
-        if (nextTargetHour === undefined) {
-          nextTargetHour = 24;
-        }
-        const targetTime = new Date(now);
-        targetTime.setUTCHours(nextTargetHour, 5, 0, 0);
-        if (targetTime < now) {
-          targetTime.setUTCDate(targetTime.getUTCDate() + 1);
-          targetTime.setUTCHours(targetHours[0], 5, 0, 0);
-        }
-        const diff = targetTime - now;
-        const hours = Math.floor(
-          (diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)
-        );
-        const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-        const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-        const f = (n) => (n < 10 ? "0" + n : n);
-        timerElement.textContent = `${f(hours)}:${f(minutes)}:${f(seconds)}`;
+      if ("serviceWorker" in navigator && "PushManager" in window) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker.register("/sw.js").then((registration) => {
+            console.log("Service Worker registriert.");
+            document
+              .getElementById("subscribe-button")
+              .addEventListener("click", () => {
+                Notification.requestPermission().then((permission) => {
+                  if (permission === "granted") {
+                    subscribeUser();
+                  }
+                });
+              });
+          });
+        });
       }
-
-      document.addEventListener("DOMContentLoaded", () => {
-        initChart();
-        populateTable();
-        setInterval(populateTable, 60000);
-        updateCountdown();
-        setInterval(updateCountdown, 1000);
-      });
     </script>
   </body>
 </html>
