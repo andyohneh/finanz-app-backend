@@ -65,7 +65,7 @@
         "Trend_Periode":100,
         "Rendite_%":25.32,
         "Gewinnrate_%":85.57,
-        "Sharpe_Ratio":4.3,
+        "Sharpe_Ratio":4.29,
         "Anzahl_Trades":97,
         "Endkapital_$":125.32
     },
@@ -85,7 +85,7 @@
         "Trend_Periode":50,
         "Rendite_%":24.07,
         "Gewinnrate_%":80.95,
-        "Sharpe_Ratio":4.07,
+        "Sharpe_Ratio":4.06,
         "Anzahl_Trades":105,
         "Endkapital_$":124.07
     },
@@ -115,7 +115,7 @@
         "Trend_Periode":50,
         "Rendite_%":22.81,
         "Gewinnrate_%":83.16,
-        "Sharpe_Ratio":4.0,
+        "Sharpe_Ratio":3.99,
         "Anzahl_Trades":95,
         "Endkapital_$":122.81
     },
@@ -215,7 +215,7 @@
         "Trend_Periode":20,
         "Rendite_%":9.84,
         "Gewinnrate_%":74.0,
-        "Sharpe_Ratio":3.88,
+        "Sharpe_Ratio":3.87,
         "Anzahl_Trades":150,
         "Endkapital_$":109.84
     },

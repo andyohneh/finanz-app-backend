@@ -91,6 +91,7 @@ def run_4h_backtest(symbol: str, confidence_threshold: float, trend_sma_period: 
     return { 'Symbol': symbol, 'Konfidenz': f"{confidence_threshold:.2f}", 'Trend_Periode': trend_sma_period, 'Rendite_%': round(total_return_percent, 2), 'Gewinnrate_%': round(win_rate, 2), 'Sharpe_Ratio': round(sharpe_ratio, 2), 'Anzahl_Trades': num_trades, 'Endkapital_$': round(capital, 2) }
 
 if __name__ == "__main__":
+    # ... (Die Optimierungs-Schleife bleibt gleich) ...
     thresholds_to_test = [0.60, 0.65, 0.70, 0.75]
     trend_periods_to_test = [20, 50, 100]
     all_results = []
@@ -108,9 +109,8 @@ if __name__ == "__main__":
         print("\n\n--- 4-STUNDEN-STRATEGIE OPTIMIERUNGS-ZUSAMMENFASSUNG ---")
         print(results_df_sorted.to_string())
 
-        # === HIER IST DIE FEHLENDE/KORRIGIERTE LOGIK ===
         try:
-            # Wichtig: Wir speichern die Ergebnisse für die 4h-Strategie in einer eigenen Datei
+            # HIER DIE WICHTIGE ZEILE: Speichert unter dem korrekten Namen
             results_df_sorted.to_json('backtest_results_4h.json', orient='records', indent=4)
             print("\nErfolgreich 'backtest_results_4h.json' im Projektordner gespeichert.")
         except Exception as e:

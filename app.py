@@ -1,4 +1,4 @@
-# app.py (Finale Version mit korrekten Dateinamen für das Dashboard)
+# app.py (Finale Version mit korrektem Laden beider JSON-Dateien)
 import os
 import json
 from flask import Flask, jsonify, render_template, send_from_directory 
@@ -20,14 +20,14 @@ def dashboard():
     """Liest BEIDE Backtest-Ergebnisse mit den korrekten Namen und zeigt sie an."""
     results = {'daily': [], 'four_hour': []}
     try:
-        # KORREKTUR: Öffnet 'backtest_result.json' (Einzahl) für die Tages-Daten
-        with open('backtest_result.json', 'r', encoding='utf-8') as f:
+        # Liest die Tages-Ergebnisse
+        with open('backtest_results_daily.json', 'r', encoding='utf-8') as f:
             results['daily'] = json.load(f)
     except Exception as e:
-        print(f"Fehler beim Laden von backtest_result.json: {e}")
+        print(f"Fehler beim Laden von backtest_results_daily.json: {e}")
     
     try:
-        # Öffnet 'backtest_results_4h.json' für die 4-Stunden-Daten
+        # Liest die 4-Stunden-Ergebnisse
         with open('backtest_results_4h.json', 'r', encoding='utf-8') as f:
             results['four_hour'] = json.load(f)
     except Exception as e:

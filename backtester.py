@@ -151,6 +151,7 @@ if __name__ == "__main__":
         print(results_df.to_string())
 
         try:
+            # HIER DIE WICHTIGE ZEILE: Speichert unter dem korrekten Namen
             results_df.to_json('backtest_results_daily.json', orient='records', indent=4)
             print("\nErfolgreich 'backtest_results_daily.json' im Projektordner gespeichert.")
         except Exception as e:
