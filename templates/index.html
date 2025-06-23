@@ -29,6 +29,20 @@
         color: #0056b3;
         text-align: center;
       }
+      .nav-link {
+        text-align: center;
+        font-size: 1.2em;
+        margin-bottom: 10px;
+      }
+      .countdown-container {
+        font-size: 1.1em;
+        font-weight: bold;
+        color: #555;
+        background-color: #e9ecef;
+        padding: 8px 15px;
+        border-radius: 20px;
+        margin: 10px 0 20px 0;
+      }
       .container {
         width: 95%;
         max-width: 1000px;
@@ -80,9 +94,13 @@
   </head>
   <body>
     <h1>KI-basierte Handelssignale</h1>
-    <p style="text-align: center; font-size: 1.2em; margin: -10px 0 20px 0">
+    <p class="nav-link">
       <a href="/dashboard">Zum Analyse-Dashboard</a>
     </p>
+
+    <div class="countdown-container">
+      Nächstes Signal in: <span id="countdown-timer">--:--:--</span>
+    </div>
 
     <div class="container">
       <table>
@@ -121,16 +139,20 @@
                 borderWidth: 2,
                 pointRadius: 0,
               },
+              {
+                label: "Signal",
+                data: [],
+                pointStyle: "triangle",
+                pointRadius: 8,
+                pointHoverRadius: 10,
+                showLine: false,
+              },
             ],
           },
           options: {
             responsive: true,
             maintainAspectRatio: false,
-            scales: {
-              y: {
-                beginAtZero: false,
-              },
-            },
+            scales: { y: { beginAtZero: false } },
           },
         });
       }
@@ -138,13 +160,12 @@
       async function updateChart(symbol) {
         try {
           const response = await fetch(`/historical-data/${symbol}`);
-          if (!response.ok) throw new Error("Netzwerk-Antwort war nicht ok.");
           const chartData = await response.json();
           if (chartData.error) throw new Error(chartData.error);
-
           financialChart.data.labels = chartData.labels;
           financialChart.data.datasets[0].data = chartData.data;
-          financialChart.data.datasets[0].label = `${symbol} Kursverlauf`;
+          financialChart.data.datasets[0].label = `${symbol} Kursverlauf (4H)`;
+          financialChart.data.datasets[1].data = []; // Marker zurücksetzen
           financialChart.update();
         } catch (error) {
           console.error(
@@ -154,6 +175,36 @@
         }
       }
 
+      function addSignalMarker(signalData) {
+        const signalDate = signalData.timestamp.split(" ")[0];
+        const signalIndex = financialChart.data.labels.findIndex((label) =>
+          label.startsWith(signalDate)
+        );
+
+        const markerCount = financialChart.data.labels.length;
+        financialChart.data.datasets[1].data = new Array(markerCount).fill(
+          null
+        );
+
+        if (signalIndex !== -1 && signalData.signal !== "Halten") {
+          financialChart.data.datasets[1].data[signalIndex] = parseFloat(
+            signalData.entry
+          );
+
+          let markerColor = "#28a745";
+          let markerStyle = "triangle";
+
+          if (signalData.signal === "Verkaufen") {
+            markerColor = "#dc3545";
+            markerStyle = "rectRot";
+          }
+          financialChart.data.datasets[1].borderColor = markerColor;
+          financialChart.data.datasets[1].backgroundColor = markerColor;
+          financialChart.data.datasets[1].pointStyle = markerStyle;
+        }
+        financialChart.update();
+      }
+
       async function populateTable() {
         const tableBody = document.getElementById("financial-data");
         if (tableBody.innerHTML === "") {
@@ -161,19 +212,14 @@
         }
         try {
           const response = await fetch("/api/assets");
-          if (!response.ok) throw new Error("Netzwerk-Antwort war nicht ok.");
           const assets = await response.json();
           if (assets.error) throw new Error(assets.error);
-
           tableBody.innerHTML = "";
-
           assets.forEach((data) => {
             const row = document.createElement("tr");
-
             if (data.color === "green") row.style.backgroundColor = "#eaf7ea";
             else if (data.color === "red")
               row.style.backgroundColor = "#fbe9e7";
-
             row.innerHTML = `
                 <td><strong>${data.asset}</strong></td>
                 <td>${data.entry}</td>
@@ -184,23 +230,61 @@
                 ? `<i class="fas fa-${data.icon}" style="margin-left: 8px;"></i>`
                 : ""
             }</td>`;
-
             tableBody.appendChild(row);
-
             row.addEventListener("click", () => {
-              updateChart(data.asset);
+              updateChart(data.asset).then(() => {
+                addSignalMarker(data);
+              });
             });
           });
+
+          if (
+            assets.length > 0 &&
+            (!financialChart.data.datasets[0].label ||
+              financialChart.data.datasets[0].label === "Kursverlauf")
+          ) {
+            const firstAsset = assets[0];
+            updateChart(firstAsset.asset).then(() =>
+              addSignalMarker(firstAsset)
+            );
+          }
         } catch (error) {
           console.error("Fehler beim Laden der Finanzdaten:", error);
           tableBody.innerHTML = `<tr><td colspan="5" class="loading-text" style="color: red;">Fehler beim Laden der Daten.</td></tr>`;
         }
       }
 
+      function updateCountdown() {
+        const timerElement = document.getElementById("countdown-timer");
+        const now = new Date();
+        const currentUTCHour = now.getUTCHours();
+        const targetHours = [0, 4, 8, 12, 16, 20];
+        let nextTargetHour = targetHours.find((h) => h > currentUTCHour);
+        if (nextTargetHour === undefined) {
+          nextTargetHour = 24;
+        }
+        const targetTime = new Date(now);
+        targetTime.setUTCHours(nextTargetHour, 5, 0, 0);
+        if (targetTime < now) {
+          targetTime.setUTCDate(targetTime.getUTCDate() + 1);
+          targetTime.setUTCHours(targetHours[0], 5, 0, 0);
+        }
+        const diff = targetTime - now;
+        const hours = Math.floor(
+          (diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)
+        );
+        const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+        const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+        const f = (n) => (n < 10 ? "0" + n : n);
+        timerElement.textContent = `${f(hours)}:${f(minutes)}:${f(seconds)}`;
+      }
+
       document.addEventListener("DOMContentLoaded", () => {
         initChart();
         populateTable();
         setInterval(populateTable, 60000);
+        updateCountdown();
+        setInterval(updateCountdown, 1000);
       });
     </script>
   </body>
