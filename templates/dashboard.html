@@ -5,29 +5,60 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Analyse-Dashboard</title>
     <style>
+      :root {
+        --bg-color: #f4f7f9;
+        --card-bg-color: #ffffff;
+        --text-color: #333;
+        --header-color: #0056b3;
+        --border-color: #ddd;
+        --hover-color: #e9ecef;
+        --switch-bg-color: #ccc;
+      }
+      body.dark-mode {
+        --bg-color: #121212;
+        --card-bg-color: #1e1e1e;
+        --text-color: #e0e0e0;
+        --header-color: #bb86fc;
+        --border-color: #444;
+        --hover-color: #333;
+        --switch-bg-color: #bb86fc;
+      }
       body {
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
           Helvetica, Arial, sans-serif;
-        background-color: #f4f7f9;
-        color: #333;
+        background-color: var(--bg-color);
+        color: var(--text-color);
         margin: 0;
         padding: 20px;
+        display: flex;
+        align-items: center;
+        flex-direction: column;
+        min-height: 100vh;
+        transition: background-color 0.3s, color 0.3s;
+      }
+      .header-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        width: 100%;
+        max-width: 1000px;
+        position: relative;
       }
       h1,
-      h2,
-      h3 {
-        color: #0056b3;
+      h2 {
+        color: var(--header-color);
         text-align: center;
       }
       h2 {
-        border-bottom: 2px solid #ddd;
+        border-bottom: 2px solid var(--border-color);
         padding-bottom: 10px;
         margin-top: 40px;
       }
       .container {
+        background-color: var(--card-bg-color);
+        transition: background-color 0.3s;
         width: 95%;
         max-width: 1000px;
-        background-color: #fff;
         padding: 20px;
         border-radius: 8px;
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
@@ -42,37 +73,97 @@
       th,
       td {
         padding: 12px 15px;
-        border-bottom: 1px solid #ddd;
+        border-bottom: 1px solid var(--border-color);
         text-align: left;
         white-space: nowrap;
       }
       th {
-        background-color: #007bff;
+        background-color: #28a745;
         color: white;
+      }
+      body.dark-mode th {
+        background-color: #03dac6;
+        color: #121212;
       }
       .verdict {
         text-align: center;
         font-size: 1.2em;
         margin: 30px auto;
         max-width: 800px;
-        background-color: #eaf7ea;
+        background-color: var(--card-bg-color);
         padding: 15px;
         border-radius: 8px;
         border-left: 5px solid #28a745;
+      }
+      body.dark-mode .verdict {
+        border-left-color: #03dac6;
       }
       .back-link {
         display: block;
         text-align: center;
         margin-top: 40px;
-        color: #007bff;
+        color: var(--header-color);
         text-decoration: none;
         font-weight: bold;
         font-size: 1.1em;
       }
+      .theme-switch-wrapper {
+        display: flex;
+        align-items: center;
+        position: absolute;
+        top: 10px;
+        right: 20px;
+      }
+      .theme-switch {
+        display: inline-block;
+        height: 34px;
+        position: relative;
+        width: 60px;
+      }
+      .theme-switch input {
+        display: none;
+      }
+      .slider {
+        background-color: var(--switch-bg-color);
+        bottom: 0;
+        cursor: pointer;
+        left: 0;
+        right: 0;
+        top: 0;
+        position: absolute;
+        transition: 0.4s;
+        border-radius: 34px;
+      }
+      .slider:before {
+        background-color: #fff;
+        bottom: 4px;
+        content: "";
+        height: 26px;
+        left: 4px;
+        position: absolute;
+        transition: 0.4s;
+        width: 26px;
+        border-radius: 50%;
+      }
+      input:checked + .slider {
+        background-color: #6b46c1;
+      }
+      input:checked + .slider:before {
+        transform: translateX(26px);
+      }
     </style>
   </head>
   <body>
-    <h1>Analyse-Dashboard: Zeitfenster-Showdown</h1>
+    <div class="header-container">
+      <h1>Analyse-Dashboard</h1>
+      <div class="theme-switch-wrapper">
+        <label class="theme-switch" for="checkbox">
+          <input type="checkbox" id="checkbox" />
+          <div class="slider round"></div>
+        </label>
+      </div>
+    </div>
+
     <div class="verdict">
       <p>
         <strong>Fazit:</strong> Der <strong>Tages-Trader</strong> gewinnt bei
@@ -102,8 +193,8 @@
             <td><strong>{{ result.Symbol }}</strong></td>
             <td>{{ result.Konfidenz }}</td>
             <td>{{ result.Trend_Periode }}</td>
-            <td>{{ result['Rendite_%'] }}</td>
-            <td>{{ result['Gewinnrate_%'] }}</td>
+            <td>+{{ result['Rendite_%'] }}%</td>
+            <td>{{ result['Gewinnrate_%'] }}%</td>
             <td>{{ result.Sharpe_Ratio }}</td>
             <td>{{ result.Anzahl_Trades }}</td>
           </tr>
@@ -132,8 +223,8 @@
             <td><strong>{{ result.Symbol }}</strong></td>
             <td>{{ result.Konfidenz }}</td>
             <td>{{ result.Trend_Periode }}</td>
-            <td>{{ result['Rendite_%'] }}</td>
-            <td>{{ result['Gewinnrate_%'] }}</td>
+            <td>+{{ result['Rendite_%'] }}%</td>
+            <td>{{ result['Gewinnrate_%'] }}%</td>
             <td>{{ result.Sharpe_Ratio }}</td>
             <td>{{ result.Anzahl_Trades }}</td>
           </tr>
@@ -143,5 +234,27 @@
     </div>
 
     <a href="/" class="back-link">Zurück zu den Live-Signalen</a>
+
+    <script>
+      const themeSwitch = document.getElementById("checkbox");
+      const currentTheme = localStorage.getItem("theme");
+
+      if (currentTheme) {
+        document.body.classList.add(currentTheme);
+        if (currentTheme === "dark-mode") {
+          themeSwitch.checked = true;
+        }
+      }
+
+      themeSwitch.addEventListener("change", function (event) {
+        if (event.target.checked) {
+          document.body.classList.add("dark-mode");
+          localStorage.setItem("theme", "dark-mode");
+        } else {
+          document.body.classList.remove("dark-mode");
+          localStorage.setItem("theme", "light-mode");
+        }
+      });
+    </script>
   </body>
 </html>

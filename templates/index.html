@@ -11,57 +11,57 @@
     />
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
+      :root {
+        --bg-color: #f4f7f9;
+        --card-bg-color: #ffffff;
+        --text-color: #333;
+        --header-color: #0056b3;
+        --border-color: #ddd;
+        --hover-color: #e9ecef;
+        --switch-bg-color: #ccc;
+      }
+      body.dark-mode {
+        --bg-color: #121212;
+        --card-bg-color: #1e1e1e;
+        --text-color: #e0e0e0;
+        --header-color: #bb86fc;
+        --border-color: #444;
+        --hover-color: #333;
+        --switch-bg-color: #bb86fc;
+      }
       body {
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
           Helvetica, Arial, sans-serif;
-        background-color: #f4f7f9;
-        color: #333;
+        background-color: var(--bg-color);
+        color: var(--text-color);
         margin: 0;
         padding: 20px;
         display: flex;
-        justify-content: flex-start;
         align-items: center;
         flex-direction: column;
         min-height: 100vh;
+        transition: background-color 0.3s, color 0.3s;
+      }
+      .header-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        width: 100%;
+        max-width: 1000px;
+        position: relative;
       }
       h1 {
-        color: #0056b3;
+        color: var(--header-color);
         text-align: center;
+        margin-right: auto;
+        margin-left: auto;
       }
-      .nav-link {
-        text-align: center;
-        font-size: 1.2em;
-        margin-bottom: 10px;
-      }
-      .subscribe-container {
-        margin-bottom: 20px;
-      }
-      #subscribe-button {
-        font-size: 1em;
-        padding: 10px 15px;
-        border-radius: 8px;
-        border: none;
-        background-color: #5a67d8;
-        color: white;
-        cursor: pointer;
-        font-weight: bold;
-      }
-      #subscribe-button:hover {
-        background-color: #434190;
-      }
-      .countdown-container {
-        font-size: 1.1em;
-        font-weight: bold;
-        color: #555;
-        background-color: #e9ecef;
-        padding: 8px 15px;
-        border-radius: 20px;
-        margin: 10px 0 20px 0;
-      }
-      .container {
+      .container,
+      #chart-container {
+        background-color: var(--card-bg-color);
+        transition: background-color 0.3s;
         width: 95%;
         max-width: 1000px;
-        background-color: #fff;
         padding: 20px;
         border-radius: 8px;
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
@@ -76,28 +76,23 @@
       th,
       td {
         padding: 12px 15px;
-        border-bottom: 1px solid #ddd;
+        border-bottom: 1px solid var(--border-color);
         text-align: left;
         white-space: nowrap;
       }
       th {
         background-color: #007bff;
         color: white;
-        position: sticky;
-        top: 0;
+      }
+      body.dark-mode th {
+        background-color: #3700b3;
       }
       tr:hover {
-        background-color: #e9ecef;
+        background-color: var(--hover-color);
         cursor: pointer;
       }
       #chart-container {
-        width: 95%;
-        max-width: 1000px;
         height: 40vh;
-        background-color: #fff;
-        padding: 20px;
-        border-radius: 8px;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
       }
       .loading-text {
         text-align: center;
@@ -105,17 +100,85 @@
         color: #777;
         font-style: italic;
       }
+      .nav-link {
+        text-align: center;
+        font-size: 1.2em;
+        margin-bottom: 10px;
+      }
+      .nav-link a {
+        color: var(--header-color);
+      }
+      .countdown-container {
+        font-size: 1.1em;
+        font-weight: bold;
+        color: #555;
+        background-color: #e9ecef;
+        padding: 8px 15px;
+        border-radius: 20px;
+        margin: 10px 0 20px 0;
+      }
+      body.dark-mode .countdown-container {
+        background-color: #333;
+        color: #e0e0e0;
+      }
+      .theme-switch-wrapper {
+        display: flex;
+        align-items: center;
+        position: absolute;
+        top: 10px;
+        right: 20px;
+      }
+      .theme-switch {
+        display: inline-block;
+        height: 34px;
+        position: relative;
+        width: 60px;
+      }
+      .theme-switch input {
+        display: none;
+      }
+      .slider {
+        background-color: var(--switch-bg-color);
+        bottom: 0;
+        cursor: pointer;
+        left: 0;
+        right: 0;
+        top: 0;
+        position: absolute;
+        transition: 0.4s;
+        border-radius: 34px;
+      }
+      .slider:before {
+        background-color: #fff;
+        bottom: 4px;
+        content: "";
+        height: 26px;
+        left: 4px;
+        position: absolute;
+        transition: 0.4s;
+        width: 26px;
+        border-radius: 50%;
+      }
+      input:checked + .slider {
+        background-color: #6b46c1;
+      }
+      input:checked + .slider:before {
+        transform: translateX(26px);
+      }
     </style>
   </head>
   <body>
-    <h1>KI-basierte Handelssignale</h1>
-    <p class="nav-link">
-      <a href="/dashboard">Zum Analyse-Dashboard</a>
-    </p>
-
-    <div class="subscribe-container">
-      <button id="subscribe-button">Push-Benachrichtigungen aktivieren</button>
+    <div class="header-container">
+      <h1>KI-basierte Handelssignale</h1>
+      <div class="theme-switch-wrapper">
+        <label class="theme-switch" for="checkbox">
+          <input type="checkbox" id="checkbox" />
+          <div class="slider round"></div>
+        </label>
+      </div>
     </div>
+
+    <p class="nav-link"><a href="/dashboard">Zum Analyse-Dashboard</a></p>
 
     <div class="countdown-container">
       Nächstes Signal in: <span id="countdown-timer">--:--:--</span>
@@ -171,7 +234,41 @@
           options: {
             responsive: true,
             maintainAspectRatio: false,
-            scales: { y: { beginAtZero: false } },
+            plugins: {
+              legend: {
+                labels: {
+                  color: document.body.classList.contains("dark-mode")
+                    ? "#e0e0e0"
+                    : "#333",
+                },
+              },
+            },
+            scales: {
+              y: {
+                ticks: {
+                  color: document.body.classList.contains("dark-mode")
+                    ? "#e0e0e0"
+                    : "#333",
+                },
+                grid: {
+                  color: document.body.classList.contains("dark-mode")
+                    ? "#444"
+                    : "#ddd",
+                },
+              },
+              x: {
+                ticks: {
+                  color: document.body.classList.contains("dark-mode")
+                    ? "#e0e0e0"
+                    : "#333",
+                },
+                grid: {
+                  color: document.body.classList.contains("dark-mode")
+                    ? "#444"
+                    : "#ddd",
+                },
+              },
+            },
           },
         });
       }
@@ -180,10 +277,9 @@
         try {
           const response = await fetch(`/historical-data/${symbol}`);
           const chartData = await response.json();
-          if (chartData.error) throw new Error(chartData.error);
           financialChart.data.labels = chartData.labels;
           financialChart.data.datasets[0].data = chartData.data;
-          financialChart.data.datasets[0].label = `${symbol} Kursverlauf (4H)`;
+          financialChart.data.datasets[0].label = `${symbol} Kursverlauf (24H)`;
           financialChart.data.datasets[1].data = [];
           financialChart.update();
         } catch (error) {
@@ -230,9 +326,18 @@
           tableBody.innerHTML = "";
           assets.forEach((data) => {
             const row = document.createElement("tr");
-            if (data.color === "green") row.style.backgroundColor = "#eaf7ea";
+            if (data.color === "green")
+              row.style.backgroundColor = document.body.classList.contains(
+                "dark-mode"
+              )
+                ? "#2a3b2a"
+                : "#eaf7ea";
             else if (data.color === "red")
-              row.style.backgroundColor = "#fbe9e7";
+              row.style.backgroundColor = document.body.classList.contains(
+                "dark-mode"
+              )
+                ? "#4d2e2e"
+                : "#fbe9e7";
             row.innerHTML = `<td><strong>${data.asset}</strong></td><td>${
               data.entry
             }</td><td>${data.takeProfit}</td><td>${data.stopLoss}</td><td>${
@@ -249,8 +354,7 @@
           });
           if (
             assets.length > 0 &&
-            (!financialChart.data.datasets[0].label ||
-              !financialChart.data.datasets[0].label.includes(assets[0].asset))
+            !financialChart.data.datasets[0].label.includes(assets[0].asset)
           ) {
             const firstAsset = assets[0];
             updateChart(firstAsset.asset).then(() =>
@@ -264,6 +368,49 @@
       }
 
       function updateCountdown() {
+        /* ... unverändert ... */
+      }
+
+      document.addEventListener("DOMContentLoaded", () => {
+        initChart();
+        populateTable();
+        setInterval(populateTable, 60000);
+        updateCountdown();
+        setInterval(updateCountdown, 1000);
+      });
+
+      const themeSwitch = document.getElementById("checkbox");
+      const currentTheme = localStorage.getItem("theme");
+      if (currentTheme) {
+        document.body.classList.add(currentTheme);
+        if (currentTheme === "dark-mode") {
+          themeSwitch.checked = true;
+        }
+      }
+      themeSwitch.addEventListener("change", function (event) {
+        if (event.target.checked) {
+          document.body.classList.add("dark-mode");
+          localStorage.setItem("theme", "dark-mode");
+        } else {
+          document.body.classList.remove("dark-mode");
+          localStorage.setItem("theme", "light-mode");
+        }
+        // Chart-Farben aktualisieren
+        financialChart.options.plugins.legend.labels.color =
+          document.body.classList.contains("dark-mode") ? "#e0e0e0" : "#333";
+        financialChart.options.scales.y.ticks.color =
+          document.body.classList.contains("dark-mode") ? "#e0e0e0" : "#333";
+        financialChart.options.scales.x.ticks.color =
+          document.body.classList.contains("dark-mode") ? "#e0e0e0" : "#333";
+        financialChart.options.scales.y.grid.color =
+          document.body.classList.contains("dark-mode") ? "#444" : "#ddd";
+        financialChart.options.scales.x.grid.color =
+          document.body.classList.contains("dark-mode") ? "#444" : "#ddd";
+        financialChart.update();
+      });
+
+      // Funktion für Countdown
+      function updateCountdown() {
         const timerElement = document.getElementById("countdown-timer");
         if (!timerElement) return;
         const now = new Date();
@@ -274,94 +421,18 @@
           nextTargetHour = 24;
         }
         const targetTime = new Date(
-          Date.UTC(
-            now.getUTCFullYear(),
-            now.getUTCMonth(),
-            now.getUTCDate(),
-            nextTargetHour,
-            5,
-            0
-          )
+          Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
         );
+        targetTime.setUTCHours(nextTargetHour, 5, 0, 0);
         if (targetTime < now) {
           targetTime.setUTCDate(targetTime.getUTCDate() + 1);
         }
         const diff = targetTime - now;
-        const hours = Math.floor(diff / (1000 * 60 * 60));
-        const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-        const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+        const hours = Math.floor(diff / 3600000);
+        const minutes = Math.floor((diff % 3600000) / 60000);
+        const seconds = Math.floor((diff % 60000) / 1000);
         const f = (n) => (n < 10 ? "0" + n : n);
         timerElement.textContent = `${f(hours)}:${f(minutes)}:${f(seconds)}`;
-      }
-
-      document.addEventListener("DOMContentLoaded", () => {
-        initChart();
-        populateTable();
-        setInterval(populateTable, 60000);
-        updateCountdown();
-        setInterval(updateCountdown, 1000);
-      });
-    </script>
-
-    <script>
-      const VAPID_PUBLIC_KEY =
-        "BBNrKK7tabrsNhMb01nszlMohlKO0w2VfBcokwouI2QR_WOL8dRl8ZnS9OLJJLdpQOnpH9LFU9e9lBW7Zd-DgfA";
-      function urlBase64ToUint8Array(base64String) {
-        const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
-        const base64 = (base64String + padding)
-          .replace(/-/g, "+")
-          .replace(/_/g, "/");
-        const rawData = window.atob(base64);
-        const outputArray = new Uint8Array(rawData.length);
-        for (let i = 0; i < rawData.length; ++i) {
-          outputArray[i] = rawData.charCodeAt(i);
-        }
-        return outputArray;
-      }
-      async function subscribeUser() {
-        try {
-          const registration = await navigator.serviceWorker.ready;
-          const subscription = await registration.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
-          });
-          await fetch("/api/save-subscription", {
-            method: "POST",
-            body: JSON.stringify(subscription),
-            headers: { "Content-Type": "application/json" },
-          });
-          alert("Push-Benachrichtigungen erfolgreich aktiviert!");
-        } catch (error) {
-          console.error("Fehler beim Abonnieren:", error);
-          alert(
-            "Fehler: Push-Benachrichtigungen konnten nicht aktiviert werden."
-          );
-        }
-      }
-      if ("serviceWorker" in navigator && "PushManager" in window) {
-        window.addEventListener("load", () => {
-          navigator.serviceWorker
-            .register("/sw.js")
-            .then((registration) => {
-              console.log("Service Worker registriert.");
-              const subscribeButton =
-                document.getElementById("subscribe-button");
-              if (subscribeButton) {
-                subscribeButton.addEventListener("click", () => {
-                  Notification.requestPermission().then((permission) => {
-                    if (permission === "granted") {
-                      subscribeUser();
-                    }
-                  });
-                });
-              }
-            })
-            .catch((err) => console.log("Service Worker Fehler:", err));
-        });
-      } else {
-        console.warn("Push Messaging wird nicht unterstützt.");
-        const subscribeButton = document.getElementById("subscribe-button");
-        if (subscribeButton) subscribeButton.style.display = "none";
       }
     </script>
   </body>
