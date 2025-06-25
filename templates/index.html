@@ -108,6 +108,22 @@
       .nav-link a {
         color: var(--header-color);
       }
+      .subscribe-container {
+        margin-bottom: 20px;
+      }
+      #subscribe-button {
+        font-size: 1em;
+        padding: 10px 15px;
+        border-radius: 8px;
+        border: none;
+        background-color: #5a67d8;
+        color: white;
+        cursor: pointer;
+        font-weight: bold;
+      }
+      #subscribe-button:hover {
+        background-color: #434190;
+      }
       .countdown-container {
         font-size: 1.1em;
         font-weight: bold;
@@ -179,6 +195,10 @@
     </div>
 
     <p class="nav-link"><a href="/dashboard">Zum Analyse-Dashboard</a></p>
+
+    <div class="subscribe-container">
+      <button id="subscribe-button">Push-Benachrichtigungen aktivieren</button>
+    </div>
 
     <div class="countdown-container">
       Nächstes Signal in: <span id="countdown-timer">--:--:--</span>
@@ -368,7 +388,28 @@
       }
 
       function updateCountdown() {
-        /* ... unverändert ... */
+        const timerElement = document.getElementById("countdown-timer");
+        if (!timerElement) return;
+        const now = new Date();
+        let targetTime = new Date(
+          Date.UTC(
+            now.getUTCFullYear(),
+            now.getUTCMonth(),
+            now.getUTCDate(),
+            0,
+            5,
+            0
+          )
+        );
+        if (targetTime < now) {
+          targetTime.setUTCDate(targetTime.getUTCDate() + 1);
+        }
+        const diff = targetTime - now;
+        const hours = Math.floor(diff / 3600000);
+        const minutes = Math.floor((diff % 3600000) / 60000);
+        const seconds = Math.floor((diff % 60000) / 1000);
+        const f = (n) => (n < 10 ? "0" + n : n);
+        timerElement.textContent = `${f(hours)}:${f(minutes)}:${f(seconds)}`;
       }
 
       document.addEventListener("DOMContentLoaded", () => {
@@ -388,51 +429,89 @@
         }
       }
       themeSwitch.addEventListener("change", function (event) {
-        if (event.target.checked) {
-          document.body.classList.add("dark-mode");
-          localStorage.setItem("theme", "dark-mode");
-        } else {
-          document.body.classList.remove("dark-mode");
-          localStorage.setItem("theme", "light-mode");
-        }
-        // Chart-Farben aktualisieren
-        financialChart.options.plugins.legend.labels.color =
-          document.body.classList.contains("dark-mode") ? "#e0e0e0" : "#333";
-        financialChart.options.scales.y.ticks.color =
-          document.body.classList.contains("dark-mode") ? "#e0e0e0" : "#333";
-        financialChart.options.scales.x.ticks.color =
-          document.body.classList.contains("dark-mode") ? "#e0e0e0" : "#333";
-        financialChart.options.scales.y.grid.color =
-          document.body.classList.contains("dark-mode") ? "#444" : "#ddd";
-        financialChart.options.scales.x.grid.color =
-          document.body.classList.contains("dark-mode") ? "#444" : "#ddd";
+        document.body.classList.toggle("dark-mode", event.target.checked);
+        localStorage.setItem(
+          "theme",
+          event.target.checked ? "dark-mode" : "light-mode"
+        );
+        financialChart.options.plugins.legend.labels.color = event.target
+          .checked
+          ? "#e0e0e0"
+          : "#333";
+        financialChart.options.scales.y.ticks.color = event.target.checked
+          ? "#e0e0e0"
+          : "#333";
+        financialChart.options.scales.x.ticks.color = event.target.checked
+          ? "#e0e0e0"
+          : "#333";
+        financialChart.options.scales.y.grid.color = event.target.checked
+          ? "#444"
+          : "#ddd";
+        financialChart.options.scales.x.grid.color = event.target.checked
+          ? "#444"
+          : "#ddd";
         financialChart.update();
       });
+    </script>
 
-      // Funktion für Countdown
-      function updateCountdown() {
-        const timerElement = document.getElementById("countdown-timer");
-        if (!timerElement) return;
-        const now = new Date();
-        const currentUTCHour = now.getUTCHours();
-        const targetHours = [0, 4, 8, 12, 16, 20];
-        let nextTargetHour = targetHours.find((h) => h > currentUTCHour);
-        if (nextTargetHour === undefined) {
-          nextTargetHour = 24;
+    <script>
+      const VAPID_PUBLIC_KEY = "DEIN_VAPID_PUBLIC_KEY_HIER_EINFÜGEN";
+      function urlBase64ToUint8Array(base64String) {
+        const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+        const base64 = (base64String + padding)
+          .replace(/-/g, "+")
+          .replace(/_/g, "/");
+        const rawData = window.atob(base64);
+        const outputArray = new Uint8Array(rawData.length);
+        for (let i = 0; i < rawData.length; ++i) {
+          outputArray[i] = rawData.charCodeAt(i);
         }
-        const targetTime = new Date(
-          Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
-        );
-        targetTime.setUTCHours(nextTargetHour, 5, 0, 0);
-        if (targetTime < now) {
-          targetTime.setUTCDate(targetTime.getUTCDate() + 1);
+        return outputArray;
+      }
+      async function subscribeUser() {
+        try {
+          const registration = await navigator.serviceWorker.ready;
+          const subscription = await registration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+          });
+          await fetch("/api/save-subscription", {
+            method: "POST",
+            body: JSON.stringify(subscription),
+            headers: { "Content-Type": "application/json" },
+          });
+          alert("Push-Benachrichtigungen erfolgreich aktiviert!");
+        } catch (error) {
+          console.error("Fehler beim Abonnieren:", error);
+          alert(
+            "Fehler: Push-Benachrichtigungen konnten nicht aktiviert werden."
+          );
         }
-        const diff = targetTime - now;
-        const hours = Math.floor(diff / 3600000);
-        const minutes = Math.floor((diff % 3600000) / 60000);
-        const seconds = Math.floor((diff % 60000) / 1000);
-        const f = (n) => (n < 10 ? "0" + n : n);
-        timerElement.textContent = `${f(hours)}:${f(minutes)}:${f(seconds)}`;
+      }
+      if ("serviceWorker" in navigator && "PushManager" in window) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker
+            .register("/sw.js")
+            .then((registration) => {
+              console.log("Service Worker registriert.");
+              const subscribeButton =
+                document.getElementById("subscribe-button");
+              if (subscribeButton) {
+                subscribeButton.addEventListener("click", () => {
+                  Notification.requestPermission().then((permission) => {
+                    if (permission === "granted") {
+                      subscribeUser();
+                    }
+                  });
+                });
+              }
+            })
+            .catch((err) => console.log("Service Worker Fehler:", err));
+        });
+      } else {
+        console.warn("Push Messaging wird nicht unterstützt.");
+        const subscribeButton = document.getElementById("subscribe-button");
+        if (subscribeButton) subscribeButton.style.display = "none";
       }
     </script>
   </body>
