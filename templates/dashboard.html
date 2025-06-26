@@ -154,23 +154,22 @@
   </head>
   <body>
     <div class="header-container">
-      <h1>Analyse-Dashboard: Die Halle der Champions</h1>
+      <h1>Analyse-Dashboard: Champions</h1>
       <div class="theme-switch-wrapper">
-        <label class="theme-switch" for="checkbox">
-          <input type="checkbox" id="checkbox" />
-          <div class="slider round"></div>
-        </label>
+        <label class="theme-switch" for="checkbox"
+          ><input type="checkbox" id="checkbox" />
+          <div class="slider round"></div
+        ></label>
       </div>
     </div>
-
-    <div class="verdict">
+    <div class="verdict" style="border-left-color: var(--green-positive)">
       <p>
-        <strong>Fazit:</strong> Die <strong>"Genie"-Strategie</strong> ist der
-        unangefochtene Champion nach professionellen Maßstäben, mit der höchsten
-        Gewinnrate und der besten risiko-adjustierten Rendite (Sharpe Ratio).
+        <strong>Fazit:</strong> Die
+        <strong>4-Stunden-Strategie ("Genie")</strong> ist der Champion nach
+        professionellen Maßstäben mit der besten risiko-adjustierten Rendite
+        (Sharpe Ratio) und der höchsten Gewinnrate.
       </p>
     </div>
-
     <h2>🏆 "Genie"-Strategie (4H + Tages-Kontext)</h2>
     <div class="container">
       <table>
@@ -200,7 +199,6 @@
         </tbody>
       </table>
     </div>
-
     <h2>🥈 Tages-Strategie (Der "Power-Hitter")</h2>
     <div class="container">
       <table>
@@ -230,10 +228,9 @@
         </tbody>
       </table>
     </div>
-
     <a href="/" class="back-link">Zurück zu den Live-Signalen</a>
-
     <script>
+      // JavaScript für den Dark Mode Schalter (identisch zu index.html)
       const themeSwitch = document.getElementById("checkbox");
       const currentTheme = localStorage.getItem("theme");
       if (currentTheme) {
