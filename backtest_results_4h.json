@@ -3,240 +3,240 @@
         "Symbol":"BTC\/USD",
         "Konfidenz":"0.60",
         "Trend_Periode":20,
-        "Rendite_%":27.5,
+        "Rendite_%":123.75,
         "Gewinnrate_%":81.58,
-        "Sharpe_Ratio":4.19,
+        "Sharpe_Ratio":4.17,
         "Anzahl_Trades":114,
-        "Endkapital_$":127.5
+        "Endkapital_$":223.75
     },
     {
         "Symbol":"BTC\/USD",
         "Konfidenz":"0.65",
         "Trend_Periode":20,
-        "Rendite_%":27.37,
+        "Rendite_%":123.17,
         "Gewinnrate_%":83.49,
-        "Sharpe_Ratio":4.24,
+        "Sharpe_Ratio":4.22,
         "Anzahl_Trades":109,
-        "Endkapital_$":127.37
+        "Endkapital_$":223.17
     },
     {
         "Symbol":"BTC\/USD",
         "Konfidenz":"0.60",
         "Trend_Periode":100,
-        "Rendite_%":26.48,
+        "Rendite_%":119.17,
         "Gewinnrate_%":82.57,
-        "Sharpe_Ratio":4.29,
+        "Sharpe_Ratio":4.32,
         "Anzahl_Trades":109,
-        "Endkapital_$":126.48
+        "Endkapital_$":219.17
     },
     {
         "Symbol":"BTC\/USD",
         "Konfidenz":"0.70",
         "Trend_Periode":20,
-        "Rendite_%":26.35,
+        "Rendite_%":118.57,
         "Gewinnrate_%":83.18,
         "Sharpe_Ratio":4.15,
         "Anzahl_Trades":107,
-        "Endkapital_$":126.35
+        "Endkapital_$":218.57
     },
     {
         "Symbol":"BTC\/USD",
         "Konfidenz":"0.65",
         "Trend_Periode":100,
-        "Rendite_%":25.84,
+        "Rendite_%":116.27,
         "Gewinnrate_%":85.0,
-        "Sharpe_Ratio":4.33,
+        "Sharpe_Ratio":4.34,
         "Anzahl_Trades":100,
-        "Endkapital_$":125.84
+        "Endkapital_$":216.27
     },
     {
         "Symbol":"BTC\/USD",
         "Konfidenz":"0.75",
         "Trend_Periode":20,
-        "Rendite_%":25.59,
+        "Rendite_%":115.16,
         "Gewinnrate_%":81.48,
         "Sharpe_Ratio":4.02,
         "Anzahl_Trades":108,
-        "Endkapital_$":125.59
+        "Endkapital_$":215.16
     },
     {
         "Symbol":"BTC\/USD",
         "Konfidenz":"0.70",
         "Trend_Periode":100,
-        "Rendite_%":25.32,
+        "Rendite_%":113.94,
         "Gewinnrate_%":85.57,
-        "Sharpe_Ratio":4.29,
-        "Anzahl_Trades":97,
-        "Endkapital_$":125.32
-    },
-    {
-        "Symbol":"BTC\/USD",
-        "Konfidenz":"0.75",
-        "Trend_Periode":100,
-        "Rendite_%":24.58,
-        "Gewinnrate_%":83.67,
-        "Sharpe_Ratio":4.15,
-        "Anzahl_Trades":98,
-        "Endkapital_$":124.58
-    },
-    {
-        "Symbol":"BTC\/USD",
-        "Konfidenz":"0.60",
-        "Trend_Periode":50,
-        "Rendite_%":24.07,
-        "Gewinnrate_%":80.95,
-        "Sharpe_Ratio":4.06,
-        "Anzahl_Trades":105,
-        "Endkapital_$":124.07
-    },
-    {
-        "Symbol":"BTC\/USD",
-        "Konfidenz":"0.65",
-        "Trend_Periode":50,
-        "Rendite_%":23.81,
-        "Gewinnrate_%":83.67,
-        "Sharpe_Ratio":4.13,
-        "Anzahl_Trades":98,
-        "Endkapital_$":123.81
-    },
-    {
-        "Symbol":"BTC\/USD",
-        "Konfidenz":"0.70",
-        "Trend_Periode":50,
-        "Rendite_%":23.43,
-        "Gewinnrate_%":83.51,
-        "Sharpe_Ratio":4.07,
-        "Anzahl_Trades":97,
-        "Endkapital_$":123.43
-    },
-    {
-        "Symbol":"BTC\/USD",
-        "Konfidenz":"0.75",
-        "Trend_Periode":50,
-        "Rendite_%":22.81,
-        "Gewinnrate_%":83.16,
-        "Sharpe_Ratio":3.99,
-        "Anzahl_Trades":95,
-        "Endkapital_$":122.81
-    },
-    {
-        "Symbol":"XAU\/USD",
-        "Konfidenz":"0.65",
-        "Trend_Periode":50,
-        "Rendite_%":10.71,
-        "Gewinnrate_%":77.18,
-        "Sharpe_Ratio":4.23,
-        "Anzahl_Trades":149,
-        "Endkapital_$":110.71
-    },
-    {
-        "Symbol":"XAU\/USD",
-        "Konfidenz":"0.65",
-        "Trend_Periode":100,
-        "Rendite_%":10.59,
-        "Gewinnrate_%":78.32,
         "Sharpe_Ratio":4.32,
-        "Anzahl_Trades":143,
-        "Endkapital_$":110.59
+        "Anzahl_Trades":97,
+        "Endkapital_$":213.94
     },
     {
-        "Symbol":"XAU\/USD",
-        "Konfidenz":"0.60",
+        "Symbol":"BTC\/USD",
+        "Konfidenz":"0.75",
         "Trend_Periode":100,
-        "Rendite_%":10.57,
-        "Gewinnrate_%":78.32,
-        "Sharpe_Ratio":4.31,
-        "Anzahl_Trades":143,
-        "Endkapital_$":110.57
+        "Rendite_%":110.62,
+        "Gewinnrate_%":83.67,
+        "Sharpe_Ratio":4.17,
+        "Anzahl_Trades":98,
+        "Endkapital_$":210.62
     },
     {
-        "Symbol":"XAU\/USD",
+        "Symbol":"BTC\/USD",
+        "Konfidenz":"0.60",
+        "Trend_Periode":50,
+        "Rendite_%":108.31,
+        "Gewinnrate_%":80.95,
+        "Sharpe_Ratio":4.12,
+        "Anzahl_Trades":105,
+        "Endkapital_$":208.31
+    },
+    {
+        "Symbol":"BTC\/USD",
+        "Konfidenz":"0.65",
+        "Trend_Periode":50,
+        "Rendite_%":107.15,
+        "Gewinnrate_%":83.67,
+        "Sharpe_Ratio":4.16,
+        "Anzahl_Trades":98,
+        "Endkapital_$":207.15
+    },
+    {
+        "Symbol":"BTC\/USD",
         "Konfidenz":"0.70",
         "Trend_Periode":50,
-        "Rendite_%":10.51,
-        "Gewinnrate_%":76.87,
-        "Sharpe_Ratio":4.18,
-        "Anzahl_Trades":147,
-        "Endkapital_$":110.51
+        "Rendite_%":105.43,
+        "Gewinnrate_%":83.51,
+        "Sharpe_Ratio":4.11,
+        "Anzahl_Trades":97,
+        "Endkapital_$":205.43
+    },
+    {
+        "Symbol":"BTC\/USD",
+        "Konfidenz":"0.75",
+        "Trend_Periode":50,
+        "Rendite_%":102.64,
+        "Gewinnrate_%":83.16,
+        "Sharpe_Ratio":4.03,
+        "Anzahl_Trades":95,
+        "Endkapital_$":202.64
     },
     {
         "Symbol":"XAU\/USD",
-        "Konfidenz":"0.60",
+        "Konfidenz":"0.65",
         "Trend_Periode":50,
-        "Rendite_%":10.46,
-        "Gewinnrate_%":76.51,
-        "Sharpe_Ratio":4.13,
+        "Rendite_%":48.18,
+        "Gewinnrate_%":77.18,
+        "Sharpe_Ratio":4.25,
         "Anzahl_Trades":149,
-        "Endkapital_$":110.46
+        "Endkapital_$":148.18
+    },
+    {
+        "Symbol":"XAU\/USD",
+        "Konfidenz":"0.65",
+        "Trend_Periode":100,
+        "Rendite_%":47.68,
+        "Gewinnrate_%":78.32,
+        "Sharpe_Ratio":4.35,
+        "Anzahl_Trades":143,
+        "Endkapital_$":147.68
+    },
+    {
+        "Symbol":"XAU\/USD",
+        "Konfidenz":"0.60",
+        "Trend_Periode":100,
+        "Rendite_%":47.55,
+        "Gewinnrate_%":78.32,
+        "Sharpe_Ratio":4.34,
+        "Anzahl_Trades":143,
+        "Endkapital_$":147.55
+    },
+    {
+        "Symbol":"XAU\/USD",
+        "Konfidenz":"0.70",
+        "Trend_Periode":50,
+        "Rendite_%":47.31,
+        "Gewinnrate_%":76.87,
+        "Sharpe_Ratio":4.21,
+        "Anzahl_Trades":147,
+        "Endkapital_$":147.31
+    },
+    {
+        "Symbol":"XAU\/USD",
+        "Konfidenz":"0.60",
+        "Trend_Periode":50,
+        "Rendite_%":47.07,
+        "Gewinnrate_%":76.51,
+        "Sharpe_Ratio":4.15,
+        "Anzahl_Trades":149,
+        "Endkapital_$":147.07
     },
     {
         "Symbol":"XAU\/USD",
         "Konfidenz":"0.70",
         "Trend_Periode":100,
-        "Rendite_%":10.36,
+        "Rendite_%":46.6,
         "Gewinnrate_%":78.42,
-        "Sharpe_Ratio":4.28,
+        "Sharpe_Ratio":4.31,
         "Anzahl_Trades":139,
-        "Endkapital_$":110.36
+        "Endkapital_$":146.6
     },
     {
         "Symbol":"XAU\/USD",
         "Konfidenz":"0.75",
         "Trend_Periode":50,
-        "Rendite_%":10.32,
+        "Rendite_%":46.44,
         "Gewinnrate_%":77.08,
-        "Sharpe_Ratio":4.15,
+        "Sharpe_Ratio":4.17,
         "Anzahl_Trades":144,
-        "Endkapital_$":110.32
+        "Endkapital_$":146.44
     },
     {
         "Symbol":"XAU\/USD",
         "Konfidenz":"0.70",
         "Trend_Periode":20,
-        "Rendite_%":9.89,
+        "Rendite_%":44.48,
         "Gewinnrate_%":75.0,
-        "Sharpe_Ratio":3.95,
+        "Sharpe_Ratio":3.98,
         "Anzahl_Trades":144,
-        "Endkapital_$":109.89
+        "Endkapital_$":144.48
     },
     {
         "Symbol":"XAU\/USD",
         "Konfidenz":"0.65",
         "Trend_Periode":20,
-        "Rendite_%":9.85,
+        "Rendite_%":44.33,
         "Gewinnrate_%":74.0,
-        "Sharpe_Ratio":3.88,
+        "Sharpe_Ratio":3.92,
         "Anzahl_Trades":150,
-        "Endkapital_$":109.85
+        "Endkapital_$":144.33
     },
     {
         "Symbol":"XAU\/USD",
         "Konfidenz":"0.60",
         "Trend_Periode":20,
-        "Rendite_%":9.84,
+        "Rendite_%":44.28,
         "Gewinnrate_%":74.0,
-        "Sharpe_Ratio":3.87,
+        "Sharpe_Ratio":3.9,
         "Anzahl_Trades":150,
-        "Endkapital_$":109.84
+        "Endkapital_$":144.28
     },
     {
         "Symbol":"XAU\/USD",
         "Konfidenz":"0.75",
         "Trend_Periode":100,
-        "Rendite_%":9.84,
+        "Rendite_%":44.27,
         "Gewinnrate_%":78.2,
-        "Sharpe_Ratio":4.15,
+        "Sharpe_Ratio":4.17,
         "Anzahl_Trades":133,
-        "Endkapital_$":109.84
+        "Endkapital_$":144.27
     },
     {
         "Symbol":"XAU\/USD",
         "Konfidenz":"0.75",
         "Trend_Periode":20,
-        "Rendite_%":9.59,
+        "Rendite_%":43.15,
         "Gewinnrate_%":75.0,
-        "Sharpe_Ratio":3.88,
+        "Sharpe_Ratio":3.91,
         "Anzahl_Trades":140,
-        "Endkapital_$":109.59
+        "Endkapital_$":143.15
     }
 ]

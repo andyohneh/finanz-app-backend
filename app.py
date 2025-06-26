@@ -19,17 +19,21 @@ def index():
 
 @app.route('/dashboard')
 def dashboard():
-    results = {'daily': [], 'four_hour': []}
+    """Liest ALLE Backtest-Ergebnisse und zeigt sie zum Vergleich an."""
+    results = {'daily': [], 'four_hour': [], 'genius': []}
     try:
         with open('backtest_results_daily.json', 'r', encoding='utf-8') as f:
             results['daily'] = json.load(f)
-    except Exception as e:
-        print(f"Warnung: backtest_results_daily.json nicht gefunden: {e}")
+    except Exception as e: print(f"Warnung: daily.json nicht gefunden: {e}")
     try:
         with open('backtest_results_4h.json', 'r', encoding='utf-8') as f:
             results['four_hour'] = json.load(f)
-    except Exception as e:
-        print(f"Warnung: backtest_results_4h.json nicht gefunden: {e}")
+    except Exception as e: print(f"Warnung: 4h.json nicht gefunden: {e}")
+    try:
+        with open('backtest_results_genius.json', 'r', encoding='utf-8') as f:
+            results['genius'] = json.load(f)
+    except Exception as e: print(f"Warnung: genius.json nicht gefunden: {e}")
+    
     return render_template('dashboard.html', results=results)
 
 @app.route('/manifest.json')

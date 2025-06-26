@@ -78,12 +78,11 @@
         white-space: nowrap;
       }
       th {
-        background-color: #28a745;
+        background-color: #007bff;
         color: white;
       }
       body.dark-mode th {
-        background-color: #03dac6;
-        color: #121212;
+        background-color: #3700b3;
       }
       .verdict {
         text-align: center;
@@ -155,7 +154,7 @@
   </head>
   <body>
     <div class="header-container">
-      <h1>Analyse-Dashboard</h1>
+      <h1>Analyse-Dashboard: Zeitfenster-Showdown</h1>
       <div class="theme-switch-wrapper">
         <label class="theme-switch" for="checkbox">
           <input type="checkbox" id="checkbox" />
@@ -166,10 +165,9 @@
 
     <div class="verdict">
       <p>
-        <strong>Fazit:</strong> Der <strong>Tages-Trader</strong> gewinnt bei
-        der absoluten Rendite. Der <strong>4-Stunden-Trader</strong> gewinnt
-        jedoch nach professionellen Maßstäben mit einer Weltklasse-Sharpe-Ratio
-        (Rendite pro Risiko).
+        Vergleich unserer Top-Strategien. Höhere Rendite bedeutet mehr absoluten
+        Gewinn. Höhere Sharpe Ratio bedeutet eine bessere, risikoärmere
+        Performance.
       </p>
     </div>
 
@@ -222,7 +220,37 @@
           <tr>
             <td><strong>{{ result.Symbol }}</strong></td>
             <td>{{ result.Konfidenz }}</td>
-            <td>{{ result.Trend_Periode }}</td>
+            <td>{{ result.Trend_Periode_4h }}</td>
+            <td>+{{ result['Rendite_%'] }}%</td>
+            <td>{{ result['Gewinnrate_%'] }}%</td>
+            <td>{{ result.Sharpe_Ratio }}</td>
+            <td>{{ result.Anzahl_Trades }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <h2>🧠 "Genie"-Strategie (4H + Tages-Kontext)</h2>
+    <div class="container">
+      <table>
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th>Konfidenz</th>
+            <th>Trend-Periode (4h)</th>
+            <th>Rendite (%)</th>
+            <th>Gewinnrate (%)</th>
+            <th>Sharpe Ratio</th>
+            <th>Trades</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for result in results.genius %}
+          <tr>
+            <td><strong>{{ result.Symbol }}</strong></td>
+            <td>{{ result.Konfidenz }}</td>
+            <td>{{ result.Trend_Periode_4h }}</td>
             <td>+{{ result['Rendite_%'] }}%</td>
             <td>{{ result['Gewinnrate_%'] }}%</td>
             <td>{{ result.Sharpe_Ratio }}</td>

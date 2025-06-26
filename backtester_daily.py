@@ -11,7 +11,7 @@ from database import engine, historical_data_daily
 MODEL_DIR = "models"
 SYMBOLS = ['BTC/USD', 'XAU/USD']
 INITIAL_CAPITAL = 100
-TRADE_SIZE_USD = 10
+TRADE_SIZE_USD = 45
 TRANSACTION_COST_PERCENT = 0.001
 
 # Beste gefundene Parameter für die TAGES-Strategie
