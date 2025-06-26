@@ -8,20 +8,27 @@
       :root {
         --bg-color: #f4f7f9;
         --card-bg-color: #ffffff;
-        --text-color: #333;
-        --header-color: #0056b3;
-        --border-color: #ddd;
-        --hover-color: #e9ecef;
+        --text-color: #3d4852;
+        --header-color: #2c5282;
+        --border-color: #e2e8f0;
+        --hover-color: #f7fafc;
         --switch-bg-color: #ccc;
+        --green-positive: #2f855a;
+        --red-negative: #c53030;
       }
       body.dark-mode {
-        --bg-color: #121212;
-        --card-bg-color: #1e1e1e;
-        --text-color: #e0e0e0;
-        --header-color: #bb86fc;
-        --border-color: #444;
-        --hover-color: #333;
-        --switch-bg-color: #bb86fc;
+        --bg-color: #1a202c;
+        --card-bg-color: #2d3748;
+        --text-color: #e2e8f0;
+        --header-color: #63b3ed;
+        --border-color: #4a5568;
+        --hover-color: #4a5568;
+        --switch-bg-color: #718096;
+        --green-positive: #68d391;
+        --red-negative: #fc8181;
+      }
+      * {
+        box-sizing: border-box;
       }
       body {
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
@@ -29,7 +36,7 @@
         background-color: var(--bg-color);
         color: var(--text-color);
         margin: 0;
-        padding: 20px;
+        padding: 2rem;
         display: flex;
         align-items: center;
         flex-direction: column;
@@ -43,11 +50,16 @@
         width: 100%;
         max-width: 1000px;
         position: relative;
+        margin-bottom: 1rem;
       }
       h1,
       h2 {
         color: var(--header-color);
         text-align: center;
+      }
+      h1 {
+        font-size: 2.5rem;
+        margin: 0 auto;
       }
       h2 {
         border-bottom: 2px solid var(--border-color);
@@ -57,32 +69,35 @@
       .container {
         background-color: var(--card-bg-color);
         transition: background-color 0.3s;
-        width: 95%;
+        width: 100%;
         max-width: 1000px;
-        padding: 20px;
-        border-radius: 8px;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-        margin: 20px auto;
+        padding: 2rem;
+        border-radius: 12px;
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1),
+          0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        margin-bottom: 2rem;
+        border: 1px solid var(--border-color);
         overflow-x: auto;
       }
       table {
         width: 100%;
         border-collapse: collapse;
-        margin-top: 20px;
       }
       th,
       td {
-        padding: 12px 15px;
+        padding: 1rem;
         border-bottom: 1px solid var(--border-color);
         text-align: left;
-        white-space: nowrap;
       }
       th {
-        background-color: #007bff;
-        color: white;
+        font-size: 0.85rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--text-color);
+        background-color: var(--bg-color);
       }
-      body.dark-mode th {
-        background-color: #3700b3;
+      tr:nth-child(even) {
+        background-color: var(--bg-color);
       }
       .verdict {
         text-align: center;
@@ -92,7 +107,7 @@
         background-color: var(--card-bg-color);
         padding: 15px;
         border-radius: 8px;
-        border-left: 5px solid #28a745;
+        border-left: 5px solid var(--green-positive);
       }
       body.dark-mode .verdict {
         border-left-color: #03dac6;
@@ -109,9 +124,7 @@
       .theme-switch-wrapper {
         display: flex;
         align-items: center;
-        position: absolute;
-        top: 10px;
-        right: 20px;
+        margin-left: auto;
       }
       .theme-switch {
         display: inline-block;
@@ -145,7 +158,7 @@
         border-radius: 50%;
       }
       input:checked + .slider {
-        background-color: #6b46c1;
+        background-color: #4c51bf;
       }
       input:checked + .slider:before {
         transform: translateX(26px);
@@ -156,20 +169,21 @@
     <div class="header-container">
       <h1>Analyse-Dashboard: Champions</h1>
       <div class="theme-switch-wrapper">
-        <label class="theme-switch" for="checkbox"
-          ><input type="checkbox" id="checkbox" />
-          <div class="slider round"></div
-        ></label>
+        <label class="theme-switch" for="checkbox">
+          <input type="checkbox" id="checkbox" />
+          <div class="slider round"></div>
+        </label>
       </div>
     </div>
-    <div class="verdict" style="border-left-color: var(--green-positive)">
+
+    <div class="verdict">
       <p>
-        <strong>Fazit:</strong> Die
-        <strong>4-Stunden-Strategie ("Genie")</strong> ist der Champion nach
-        professionellen Maßstäben mit der besten risiko-adjustierten Rendite
-        (Sharpe Ratio) und der höchsten Gewinnrate.
+        <strong>Fazit:</strong> Die <strong>"Genie"-Strategie</strong> ist der
+        Champion nach professionellen Maßstäben mit der besten
+        risiko-adjustierten Rendite (Sharpe Ratio) und der höchsten Gewinnrate.
       </p>
     </div>
+
     <h2>🏆 "Genie"-Strategie (4H + Tages-Kontext)</h2>
     <div class="container">
       <table>
@@ -199,6 +213,7 @@
         </tbody>
       </table>
     </div>
+
     <h2>🥈 Tages-Strategie (Der "Power-Hitter")</h2>
     <div class="container">
       <table>
@@ -228,9 +243,10 @@
         </tbody>
       </table>
     </div>
+
     <a href="/" class="back-link">Zurück zu den Live-Signalen</a>
+
     <script>
-      // JavaScript für den Dark Mode Schalter (identisch zu index.html)
       const themeSwitch = document.getElementById("checkbox");
       const currentTheme = localStorage.getItem("theme");
       if (currentTheme) {
