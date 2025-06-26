@@ -153,7 +153,7 @@
       .theme-switch-wrapper {
         display: flex;
         align-items: center;
-        margin-left: 2rem;
+        margin-left: auto;
       }
       .theme-switch {
         display: inline-block;
@@ -227,8 +227,290 @@
       </table>
     </div>
     <div id="chart-container"><canvas id="financial-chart"></canvas></div>
+
     <script>
-      // Der gesamte JavaScript-Block bleibt exakt gleich. Du kannst ihn aus deiner letzten Version kopieren.
+      let financialChart;
+
+      function initChart() {
+        const ctx = document.getElementById("financial-chart").getContext("2d");
+        financialChart = new Chart(ctx, {
+          type: "line",
+          data: {
+            labels: [],
+            datasets: [
+              {
+                label: "Kursverlauf",
+                data: [],
+                borderColor: "#007bff",
+                tension: 0.1,
+                borderWidth: 2,
+                pointRadius: 0,
+              },
+              {
+                label: "Signal",
+                data: [],
+                pointStyle: "triangle",
+                pointRadius: 8,
+                pointHoverRadius: 10,
+                showLine: false,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: {
+                labels: {
+                  color: document.body.classList.contains("dark-mode")
+                    ? "#e0e0e0"
+                    : "#333",
+                },
+              },
+            },
+            scales: {
+              y: {
+                ticks: {
+                  color: document.body.classList.contains("dark-mode")
+                    ? "#e0e0e0"
+                    : "#333",
+                },
+                grid: {
+                  color: document.body.classList.contains("dark-mode")
+                    ? "#444"
+                    : "#ddd",
+                },
+              },
+              x: {
+                ticks: {
+                  color: document.body.classList.contains("dark-mode")
+                    ? "#e0e0e0"
+                    : "#333",
+                },
+                grid: {
+                  color: document.body.classList.contains("dark-mode")
+                    ? "#444"
+                    : "#ddd",
+                },
+              },
+            },
+          },
+        });
+      }
+
+      async function updateChart(symbol) {
+        try {
+          const response = await fetch(`/historical-data/${symbol}`);
+          const chartData = await response.json();
+          if (chartData.error) throw new Error(chartData.error);
+          financialChart.data.labels = chartData.labels;
+          financialChart.data.datasets[0].data = chartData.data;
+          financialChart.data.datasets[0].label = `${symbol} Kursverlauf (24H)`;
+          financialChart.data.datasets[1].data = [];
+          financialChart.update();
+        } catch (error) {
+          console.error(
+            `Fehler beim Laden der Chart-Daten für ${symbol}:`,
+            error
+          );
+        }
+      }
+
+      function addSignalMarker(signalData) {
+        const signalDate = signalData.timestamp.split(" ")[0];
+        const signalIndex = financialChart.data.labels.findIndex((label) =>
+          label.startsWith(signalDate)
+        );
+        const markerCount = financialChart.data.labels.length;
+        financialChart.data.datasets[1].data = new Array(markerCount).fill(
+          null
+        );
+        if (signalIndex !== -1 && signalData.signal !== "Halten") {
+          financialChart.data.datasets[1].data[signalIndex] = parseFloat(
+            signalData.entry
+          );
+          let markerColor =
+            signalData.signal === "Kaufen" ? "#28a745" : "#dc3545";
+          let markerStyle =
+            signalData.signal === "Kaufen" ? "triangle" : "rectRot";
+          financialChart.data.datasets[1].borderColor = markerColor;
+          financialChart.data.datasets[1].backgroundColor = markerColor;
+          financialChart.data.datasets[1].pointStyle = markerStyle;
+        }
+        financialChart.update();
+      }
+
+      async function populateTable() {
+        const tableBody = document.getElementById("financial-data");
+        if (tableBody.innerHTML === "") {
+          tableBody.innerHTML = `<tr><td colspan="5" class="loading-text">Lade Daten...</td></tr>`;
+        }
+        try {
+          const response = await fetch("/api/assets");
+          const assets = await response.json();
+          if (assets.error) throw new Error(assets.error);
+          tableBody.innerHTML = "";
+          assets.forEach((data) => {
+            const row = document.createElement("tr");
+            if (data.color === "green")
+              row.style.backgroundColor = document.body.classList.contains(
+                "dark-mode"
+              )
+                ? "#2f4236"
+                : "#c6f6d5";
+            else if (data.color === "red")
+              row.style.backgroundColor = document.body.classList.contains(
+                "dark-mode"
+              )
+                ? "#4c2b2b"
+                : "#fed7d7";
+            row.innerHTML = `<td><strong>${data.asset}</strong></td><td>${
+              data.entry
+            }</td><td>${data.takeProfit}</td><td>${data.stopLoss}</td><td>${
+              data.signal
+            } ${
+              data.icon && data.icon !== "circle"
+                ? `<i class="fas fa-${data.icon}" style="margin-left: 8px;"></i>`
+                : ""
+            }</td>`;
+            tableBody.appendChild(row);
+            row.addEventListener("click", () => {
+              updateChart(data.asset).then(() => addSignalMarker(data));
+            });
+          });
+          if (
+            assets.length > 0 &&
+            !financialChart.data.datasets[0].label.includes(assets[0].asset)
+          ) {
+            const firstAsset = assets[0];
+            updateChart(firstAsset.asset).then(() =>
+              addSignalMarker(firstAsset)
+            );
+          }
+        } catch (error) {
+          console.error("Fehler beim Laden der Finanzdaten:", error);
+          tableBody.innerHTML = `<tr><td colspan="5" class="loading-text" style="color: red;">Fehler beim Laden der Daten.</td></tr>`;
+        }
+      }
+
+      function updateCountdown() {
+        const timerElement = document.getElementById("countdown-timer");
+        if (!timerElement) return;
+        const now = new Date();
+        let targetTime = new Date(
+          Date.UTC(
+            now.getUTCFullYear(),
+            now.getUTCMonth(),
+            now.getUTCDate(),
+            0,
+            5,
+            0
+          )
+        );
+        if (targetTime < now) {
+          targetTime.setUTCDate(targetTime.getUTCDate() + 1);
+        }
+        const diff = targetTime - now;
+        const hours = Math.floor(diff / 3600000);
+        const minutes = Math.floor((diff % 3600000) / 60000);
+        const seconds = Math.floor((diff % 60000) / 1000);
+        const f = (n) => (n < 10 ? "0" + n : n);
+        timerElement.textContent = `${f(hours)}:${f(minutes)}:${f(seconds)}`;
+      }
+
+      document.addEventListener("DOMContentLoaded", () => {
+        initChart();
+        populateTable();
+        setInterval(populateTable, 60000);
+        updateCountdown();
+        setInterval(updateCountdown, 1000);
+      });
+
+      const themeSwitch = document.getElementById("checkbox");
+      const currentTheme = localStorage.getItem("theme");
+      if (currentTheme) {
+        document.body.classList.add(currentTheme);
+        if (currentTheme === "dark-mode") {
+          themeSwitch.checked = true;
+        }
+      }
+      themeSwitch.addEventListener("change", function (event) {
+        document.body.classList.toggle("dark-mode", event.target.checked);
+        localStorage.setItem(
+          "theme",
+          event.target.checked ? "dark-mode" : "light-mode"
+        );
+
+        const newColor = event.target.checked ? "#e0e0e0" : "#333";
+        const newGridColor = event.target.checked ? "#444" : "#ddd";
+        financialChart.options.plugins.legend.labels.color = newColor;
+        financialChart.options.scales.y.ticks.color = newColor;
+        financialChart.options.scales.x.ticks.color = newColor;
+        financialChart.options.scales.y.grid.color = newGridColor;
+        financialChart.options.scales.x.grid.color = newGridColor;
+        financialChart.update();
+      });
+    </script>
+
+    <script>
+      const VAPID_PUBLIC_KEY = "DEIN_VAPID_PUBLIC_KEY_HIER_EINFÜGEN";
+      function urlBase64ToUint8Array(base64String) {
+        const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+        const base64 = (base64String + padding)
+          .replace(/-/g, "+")
+          .replace(/_/g, "/");
+        const rawData = window.atob(base64);
+        const outputArray = new Uint8Array(rawData.length);
+        for (let i = 0; i < rawData.length; ++i) {
+          outputArray[i] = rawData.charCodeAt(i);
+        }
+        return outputArray;
+      }
+      async function subscribeUser() {
+        try {
+          const registration = await navigator.serviceWorker.ready;
+          const subscription = await registration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+          });
+          await fetch("/api/save-subscription", {
+            method: "POST",
+            body: JSON.stringify(subscription),
+            headers: { "Content-Type": "application/json" },
+          });
+          alert("Push-Benachrichtigungen erfolgreich aktiviert!");
+        } catch (error) {
+          console.error("Fehler beim Abonnieren:", error);
+          alert(
+            "Fehler: Push-Benachrichtigungen konnten nicht aktiviert werden."
+          );
+        }
+      }
+      if ("serviceWorker" in navigator && "PushManager" in window) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker
+            .register("/sw.js")
+            .then((registration) => {
+              console.log("Service Worker registriert.");
+              const subscribeButton =
+                document.getElementById("subscribe-button");
+              if (subscribeButton) {
+                subscribeButton.addEventListener("click", () => {
+                  Notification.requestPermission().then((permission) => {
+                    if (permission === "granted") {
+                      subscribeUser();
+                    }
+                  });
+                });
+              }
+            })
+            .catch((err) => console.log("Service Worker Fehler:", err));
+        });
+      } else {
+        console.warn("Push Messaging wird nicht unterstützt.");
+        const subscribeButton = document.getElementById("subscribe-button");
+        if (subscribeButton) subscribeButton.style.display = "none";
+      }
     </script>
   </body>
 </html>
