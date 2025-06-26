@@ -154,7 +154,7 @@
   </head>
   <body>
     <div class="header-container">
-      <h1>Analyse-Dashboard: Zeitfenster-Showdown</h1>
+      <h1>Analyse-Dashboard: Die Halle der Champions</h1>
       <div class="theme-switch-wrapper">
         <label class="theme-switch" for="checkbox">
           <input type="checkbox" id="checkbox" />
@@ -165,73 +165,13 @@
 
     <div class="verdict">
       <p>
-        Vergleich unserer Top-Strategien. Höhere Rendite bedeutet mehr absoluten
-        Gewinn. Höhere Sharpe Ratio bedeutet eine bessere, risikoärmere
-        Performance.
+        <strong>Fazit:</strong> Die <strong>"Genie"-Strategie</strong> ist der
+        unangefochtene Champion nach professionellen Maßstäben, mit der höchsten
+        Gewinnrate und der besten risiko-adjustierten Rendite (Sharpe Ratio).
       </p>
     </div>
 
-    <h2>🏆 Tages-Strategie (Der "Power-Hitter")</h2>
-    <div class="container">
-      <table>
-        <thead>
-          <tr>
-            <th>Symbol</th>
-            <th>Konfidenz</th>
-            <th>Trend-Periode</th>
-            <th>Rendite (%)</th>
-            <th>Gewinnrate (%)</th>
-            <th>Sharpe Ratio</th>
-            <th>Trades</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for result in results.daily %}
-          <tr>
-            <td><strong>{{ result.Symbol }}</strong></td>
-            <td>{{ result.Konfidenz }}</td>
-            <td>{{ result.Trend_Periode }}</td>
-            <td>+{{ result['Rendite_%'] }}%</td>
-            <td>{{ result['Gewinnrate_%'] }}%</td>
-            <td>{{ result.Sharpe_Ratio }}</td>
-            <td>{{ result.Anzahl_Trades }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-
-    <h2>🚀 4-Stunden-Strategie (Der "Präzisions-Chirurg")</h2>
-    <div class="container">
-      <table>
-        <thead>
-          <tr>
-            <th>Symbol</th>
-            <th>Konfidenz</th>
-            <th>Trend-Periode</th>
-            <th>Rendite (%)</th>
-            <th>Gewinnrate (%)</th>
-            <th>Sharpe Ratio</th>
-            <th>Trades</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for result in results.four_hour %}
-          <tr>
-            <td><strong>{{ result.Symbol }}</strong></td>
-            <td>{{ result.Konfidenz }}</td>
-            <td>{{ result.Trend_Periode_4h }}</td>
-            <td>+{{ result['Rendite_%'] }}%</td>
-            <td>{{ result['Gewinnrate_%'] }}%</td>
-            <td>{{ result.Sharpe_Ratio }}</td>
-            <td>{{ result.Anzahl_Trades }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-
-    <h2>🧠 "Genie"-Strategie (4H + Tages-Kontext)</h2>
+    <h2>🏆 "Genie"-Strategie (4H + Tages-Kontext)</h2>
     <div class="container">
       <table>
         <thead>
@@ -261,27 +201,53 @@
       </table>
     </div>
 
+    <h2>🥈 Tages-Strategie (Der "Power-Hitter")</h2>
+    <div class="container">
+      <table>
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th>Konfidenz</th>
+            <th>Trend-Periode</th>
+            <th>Rendite (%)</th>
+            <th>Gewinnrate (%)</th>
+            <th>Sharpe Ratio</th>
+            <th>Trades</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for result in results.daily %}
+          <tr>
+            <td><strong>{{ result.Symbol }}</strong></td>
+            <td>{{ result.Konfidenz }}</td>
+            <td>{{ result.Trend_Periode }}</td>
+            <td>+{{ result['Rendite_%'] }}%</td>
+            <td>{{ result['Gewinnrate_%'] }}%</td>
+            <td>{{ result.Sharpe_Ratio }}</td>
+            <td>{{ result.Anzahl_Trades }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
     <a href="/" class="back-link">Zurück zu den Live-Signalen</a>
 
     <script>
       const themeSwitch = document.getElementById("checkbox");
       const currentTheme = localStorage.getItem("theme");
-
       if (currentTheme) {
         document.body.classList.add(currentTheme);
         if (currentTheme === "dark-mode") {
           themeSwitch.checked = true;
         }
       }
-
       themeSwitch.addEventListener("change", function (event) {
-        if (event.target.checked) {
-          document.body.classList.add("dark-mode");
-          localStorage.setItem("theme", "dark-mode");
-        } else {
-          document.body.classList.remove("dark-mode");
-          localStorage.setItem("theme", "light-mode");
-        }
+        document.body.classList.toggle("dark-mode", event.target.checked);
+        localStorage.setItem(
+          "theme",
+          event.target.checked ? "dark-mode" : "light-mode"
+        );
       });
     </script>
   </body>
