@@ -1,4 +1,4 @@
-# predictor_longshort.py (FINALE VERSION: Sucht nach Long- und Short-Signalen auf Tagesbasis)
+# predictor_longshort.py (FINALE VERSION: Sucht nach Long- und Short-Signalen und sendet Push-Nachrichten)
 import os
 import json
 import pandas as pd
@@ -16,17 +16,20 @@ from pywebpush import webpush, WebPushException
 # --- Initialisierung & Konfiguration ---
 load_dotenv()
 VAPID_PRIVATE_KEY = os.getenv('VAPID_PRIVATE_KEY')
-VAPID_CLAIMS = {"sub": "mailto:andy.kirschner1975@gmail.com"} # Ersetze mit deiner E-Mail
-
 TWELVEDATA_API_KEY = os.getenv('TWELVEDATA_API_KEY')
 MODEL_DIR = "models"
 SYMBOLS = ['BTC/USD', 'XAU/USD']
 DATA_LIMIT_FOR_FEATURES = 201
 
-# Parameter für die Strategien
-CONFIDENCE_LONG = 0.75; TREND_PERIOD_LONG = 150
-CONFIDENCE_SHORT = 0.60; TREND_PERIOD_SHORT = 50
-TAKE_PROFIT_ATR_MULTIPLIER = 2.0; STOP_LOSS_ATR_MULTIPLIER = 1.5
+# Parameter aus unseren Backtests
+CONFIDENCE_LONG = 0.75
+TREND_PERIOD_LONG = 150
+CONFIDENCE_SHORT = 0.60
+TREND_PERIOD_SHORT = 50
+
+# Risk-Management
+TAKE_PROFIT_ATR_MULTIPLIER = 2.0
+STOP_LOSS_ATR_MULTIPLIER = 1.5
 
 def add_features(df: pd.DataFrame, trend_sma_period: int) -> pd.DataFrame:
     df_copy = df.copy()
@@ -34,19 +37,26 @@ def add_features(df: pd.DataFrame, trend_sma_period: int) -> pd.DataFrame:
     df_copy['rsi'] = ta.momentum.rsi(df_copy['close'], window=14)
     macd = ta.trend.MACD(df_copy['close'], window_slow=26, window_fast=12, window_sign=9); df_copy['macd'] = macd.macd(); df_copy['macd_signal'] = macd.macd_signal()
     df_copy['atr'] = ta.volatility.AverageTrueRange(high=df_copy['high'], low=df_copy['low'], close=df_copy['close'], window=14).average_true_range()
-    bollinger = ta.volatility.BollingerBands(close=df_copy['close'], window=20, window_dev=2); df_copy['bb_high'] = bollinger.bollinger_hband(); df_copy['bb_low'] = bollinger.bollinger_lband()
-    stoch = ta.momentum.StochasticOscillator(high=df_copy['high'], low=df_copy['low'], close=df['close'], window=14, smooth_window=3); df_copy['stoch_k'] = stoch.stoch(); df_copy['stoch_d'] = stoch.stoch_signal()
+    bollinger = ta.volatility.BollingerBands(close=df_copy['close'], window=20, window_dev=2)
+    df_copy['bb_high'] = bollinger.bollinger_hband(); df_copy['bb_low'] = bollinger.bollinger_lband()
+    stoch = ta.momentum.StochasticOscillator(high=df_copy['high'], low=df_copy['low'], close=df_copy['close'], window=14, smooth_window=3)
+    df_copy['stoch_k'] = stoch.stoch(); df_copy['stoch_d'] = stoch.stoch_signal()
     df_copy['sma_trend'] = ta.trend.sma_indicator(df_copy['close'], window=trend_sma_period)
     df_copy.dropna(inplace=True)
     return df_copy
 
 def send_push_notification(subscription_info_json, payload_str):
     if not VAPID_PRIVATE_KEY:
-        print("FEHLER: VAPID_PRIVATE_KEY nicht konfiguriert."); return
+        print("FEHLER: VAPID_PRIVATE_KEY nicht konfiguriert.")
+        return
     try:
-        webpush(subscription_info=json.loads(subscription_info_json), data=payload_str,
-                vapid_private_key=VAPID_PRIVATE_KEY, vapid_claims=VAPID_CLAIMS.copy())
-        print(f"Push-Nachricht erfolgreich gesendet.")
+        webpush(
+            subscription_info=json.loads(subscription_info_json),
+            data=payload_str,
+            vapid_private_key=VAPID_PRIVATE_KEY,
+            vapid_claims={"sub": "mailto:deine-email@example.com"} # Ersetze dies mit deiner E-Mail
+        )
+        print("Push-Nachricht erfolgreich gesendet.")
     except WebPushException as ex:
         print(f"Fehler beim Senden der Push-Nachricht: {ex}")
 
@@ -56,7 +66,7 @@ def run_longshort_prediction_cycle():
         for symbol in SYMBOLS:
             print(f"\n--- Verarbeite {symbol} ---")
             try:
-                # 1. Daten holen und speichern
+                # 1. Neueste Tages-Daten holen und speichern
                 url = f"https://api.twelvedata.com/time_series?symbol={symbol}&interval=1day&outputsize=1&apikey={TWELVEDATA_API_KEY}"
                 response = requests.get(url, timeout=15); response.raise_for_status()
                 data = response.json()
@@ -89,17 +99,15 @@ def run_longshort_prediction_cycle():
                 is_uptrend = latest_data_long['close'].iloc[0] > latest_data_long['sma_trend'].iloc[0]
                 is_downtrend = latest_data_short['close'].iloc[0] < latest_data_short['sma_trend'].iloc[0]
 
-                signal, take_profit, stop_loss = "Halten", None, None
+                signal, take_profit, stop_loss, atr = "Halten", None, None, latest_data_long['atr'].iloc[0]
                 entry_price = latest_data_long['close'].iloc[0]
 
                 if is_uptrend and long_proba > CONFIDENCE_LONG:
                     signal = "Kaufen"
-                    atr = latest_data_long['atr'].iloc[0]
                     take_profit = entry_price + (atr * TAKE_PROFIT_ATR_MULTIPLIER)
                     stop_loss = entry_price - (atr * STOP_LOSS_ATR_MULTIPLIER)
                 elif is_downtrend and short_proba > CONFIDENCE_SHORT:
                     signal = "Verkaufen"
-                    atr = latest_data_short['atr'].iloc[0]
                     take_profit = entry_price - (atr * TAKE_PROFIT_ATR_MULTIPLIER)
                     stop_loss = entry_price + (atr * STOP_LOSS_ATR_MULTIPLIER)
                 
@@ -118,6 +126,7 @@ def run_longshort_prediction_cycle():
                     subscribers = conn.execute(subscriptions_query).fetchall()
                     for sub_row in subscribers:
                         send_push_notification(sub_row[0], payload)
+
             except Exception as e:
                 print(f"Ein Fehler im Zyklus für {symbol} ist aufgetreten: {e}")
 
