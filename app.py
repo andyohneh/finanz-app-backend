@@ -1,4 +1,4 @@
-# app.py (Finale Platin-Version, die Equity-Kurven an das Dashboard sendet)
+# app.py (Finale, aufgeräumte Version für die "Allwetter"-Tagesstrategie)
 import os
 import json
 from flask import Flask, jsonify, render_template, send_from_directory, request
@@ -6,7 +6,7 @@ from flask_cors import CORS
 from dotenv import load_dotenv
 from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import insert
-from database import engine, push_subscriptions, historical_data_4h
+from database import engine, push_subscriptions, historical_data_daily
 
 # --- GRUNDEINSTELLUNGEN ---
 load_dotenv()
@@ -22,14 +22,28 @@ def index():
 
 @app.route('/dashboard')
 def dashboard():
-    """Liest NUR die Ergebnisse der finalen Tages-Strategie."""
-    results = []
+    """Liest die Backtest-Ergebnisse der finalen Long- und Short-Tagesstrategien."""
+    results = {'long': [], 'short': []}
+    
+    # Lade Ergebnisse der Long-Strategie
     try:
-        # Wir laden jetzt nur noch die eine, relevante Ergebnis-Datei
-        with open('backtest_results_daily.json', 'r', encoding='utf-8') as f:
-            results = json.load(f)
+        # WICHTIG: Stelle sicher, dass dein Long-Backtester diese Datei erstellt
+        with open('backtest_results_daily_long.json', 'r', encoding='utf-8') as f:
+            results['long'] = json.load(f)
+    except FileNotFoundError:
+        print("Warnung: backtest_results_daily_long.json nicht gefunden.")
     except Exception as e:
-        print(f"Warnung: backtest_results_daily.json nicht gefunden: {e}")
+        print(f"Fehler beim Laden von daily_long.json: {e}")
+    
+    # Lade Ergebnisse der Short-Strategie
+    try:
+        # WICHTIG: Stelle sicher, dass dein Short-Backtester diese Datei erstellt
+        with open('backtest_results_daily_short.json', 'r', encoding='utf-8') as f:
+            results['short'] = json.load(f)
+    except FileNotFoundError:
+        print("Warnung: backtest_results_daily_short.json nicht gefunden.")
+    except Exception as e:
+        print(f"Fehler beim Laden von daily_short.json: {e}")
     
     return render_template('dashboard.html', results=results)
 
@@ -38,10 +52,9 @@ def dashboard():
 def serve_manifest():
     return send_from_directory(app.root_path, 'manifest.json')
 
-# Deaktivierte Route für den Service Worker, kann bei Bedarf reaktiviert werden
-#@app.route('/sw.js')
-#def serve_sw():
-#    return send_from_directory(app.static_folder, 'sw.js')
+@app.route('/sw.js')
+def serve_sw():
+    return send_from_directory(app.static_folder, 'sw.js')
 
 # --- API Routen ---
 
@@ -60,7 +73,6 @@ def save_subscription():
             conn.commit()
             return jsonify({'success': True}), 201
     except Exception as e:
-        print(f"Fehler beim Speichern des Abonnements: {e}")
         return jsonify({'success': False, 'error': 'Interner Serverfehler'}), 500
 
 @app.route('/api/assets')
@@ -90,23 +102,21 @@ def get_assets():
                 })
         return jsonify(assets_data)
     except Exception as e:
-        print(f"Fehler in /api/assets: {e}")
         return jsonify({"error": "Konnte keine Live-Daten abrufen."}), 500
 
 @app.route('/historical-data/<symbol>')
 def get_historical_data(symbol):
-    """Holt die historischen 4H-Daten für die Charts."""
+    """Holt die historischen TAGES-Daten für die Charts."""
     db_symbol = f"{symbol[:-3]}/{symbol[-3:]}"
-    query = text("SELECT timestamp, close FROM historical_data_4h WHERE symbol = :symbol_param ORDER BY timestamp DESC LIMIT 60")
+    query = text("SELECT timestamp, close FROM historical_data_daily WHERE symbol = :symbol_param ORDER BY timestamp DESC LIMIT 30")
     try:
         with engine.connect() as conn:
             result = conn.execute(query, {"symbol_param": db_symbol}).fetchall()
         result.reverse()
-        labels = [row[0].strftime('%Y-%m-%d %H:%M') for row in result]
+        labels = [row[0].strftime('%Y-%m-%d') for row in result]
         data_points = [row[1] for row in result]
         return jsonify({"labels": labels, "data": data_points})
     except Exception as e:
-        print(f"Fehler beim Laden der Chart-Daten für {db_symbol}: {e}")
         return jsonify({"error": "Konnte Chart-Daten nicht laden."}), 500
 
 if __name__ == "__main__":

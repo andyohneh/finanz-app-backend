@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Analyse-Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
       :root {
         --bg-color: #f4f7f9;
@@ -13,6 +14,8 @@
         --border-color: #e2e8f0;
         --hover-color: #f7fafc;
         --switch-bg-color: #ccc;
+        --green-positive: #2f855a;
+        --red-negative: #c53030;
       }
       body.dark-mode {
         --bg-color: #1a202c;
@@ -22,6 +25,8 @@
         --border-color: #4a5568;
         --hover-color: #4a5568;
         --switch-bg-color: #718096;
+        --green-positive: #68d391;
+        --red-negative: #fc8181;
       }
       * {
         box-sizing: border-box;
@@ -97,19 +102,6 @@
       tr:nth-child(even) {
         background-color: var(--bg-color);
       }
-      .verdict {
-        text-align: center;
-        font-size: 1.2em;
-        margin: 30px auto;
-        max-width: 800px;
-        background-color: var(--card-bg-color);
-        padding: 15px;
-        border-radius: 8px;
-        border-left: 5px solid #28a745;
-      }
-      body.dark-mode .verdict {
-        border-left-color: #03dac6;
-      }
       .back-link {
         display: block;
         text-align: center;
@@ -165,7 +157,7 @@
   </head>
   <body>
     <div class="header-container">
-      <h1>Analyse-Dashboard: Halle der Champions</h1>
+      <h1>Analyse-Dashboard: "Allwetter"-Strategie</h1>
       <div class="theme-switch-wrapper">
         <label class="theme-switch" for="checkbox">
           <input type="checkbox" id="checkbox" />
@@ -174,35 +166,23 @@
       </div>
     </div>
 
-    <div class="verdict">
-      <p>
-        <strong>Fazit:</strong> Die <strong>"Genie"-Strategie</strong> ist der
-        Champion nach professionellen Maßstäben mit der höchsten Gewinnrate und
-        der besten risiko-adjustierten Rendite (Sharpe Ratio).
-      </p>
-    </div>
-
-    <h2>🏆 "Genie"-Strategie (4H + Tages-Kontext)</h2>
+    <h2>📈 Long-Strategie ("Aufwind")</h2>
     <div class="container">
       <table>
         <thead>
           <tr>
             <th>Symbol</th>
-            <th>Konfidenz</th>
-            <th>Trend-Periode (4h)</th>
-            <th>Rendite (%)</th>
+            <th>Gesamtrendite (%)</th>
             <th>Gewinnrate (%)</th>
             <th>Sharpe Ratio</th>
             <th>Trades</th>
           </tr>
         </thead>
         <tbody>
-          {% for result in results.genius %}
+          {% for result in results.long %}
           <tr>
             <td><strong>{{ result.Symbol }}</strong></td>
-            <td>{{ result.Konfidenz }}</td>
-            <td>{{ result.Trend_Periode_4h }}</td>
-            <td>+{{ result['Rendite_%'] }}%</td>
+            <td>+{{ result['Gesamtrendite_%'] }}%</td>
             <td>{{ result['Gewinnrate_%'] }}%</td>
             <td>{{ result.Sharpe_Ratio }}</td>
             <td>{{ result.Anzahl_Trades }}</td>
@@ -212,60 +192,24 @@
       </table>
     </div>
 
-    <h2>🥈 Tages-Strategie (Der "Power-Hitter")</h2>
+    <h2>📉 Short-Strategie ("Gegenwind")</h2>
     <div class="container">
       <table>
         <thead>
           <tr>
             <th>Symbol</th>
-            <th>Konfidenz</th>
-            <th>Trend-Periode</th>
-            <th>Rendite (%)</th>
+            <th>Gesamtrendite (%)</th>
             <th>Gewinnrate (%)</th>
-            <th>Sharpe Ratio</th>
-            <th>Trades</th>
+            <th>Anzahl Trades</th>
           </tr>
         </thead>
         <tbody>
-          {% for result in results.daily %}
+          {% for result in results.short %}
           <tr>
             <td><strong>{{ result.Symbol }}</strong></td>
-            <td>{{ result.Konfidenz }}</td>
-            <td>{{ result.Trend_Periode }}</td>
-            <td>+{{ result['Rendite_%'] }}%</td>
-            <td>{{ result['Gewinnrate_%'] }}%</td>
-            <td>{{ result.Sharpe_Ratio }}</td>
-            <td>{{ result.Anzahl_Trades }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-
-    <h2>🥉 4-Stunden-Strategie (Der "Präzisions-Chirurg")</h2>
-    <div class="container">
-      <table>
-        <thead>
-          <tr>
-            <th>Symbol</th>
-            <th>Konfidenz</th>
-            <th>Trend-Periode (4h)</th>
-            <th>Rendite (%)</th>
-            <th>Gewinnrate (%)</th>
-            <th>Sharpe Ratio</th>
-            <th>Trades</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for result in results.four_hour %}
-          <tr>
-            <td><strong>{{ result.Symbol }}</strong></td>
-            <td>{{ result.Konfidenz }}</td>
-            <td>{{ result.Trend_Periode }}</td>
-            <td>+{{ result['Rendite_%'] }}%</td>
-            <td>{{ result['Gewinnrate_%'] }}%</td>
-            <td>{{ result.Sharpe_Ratio }}</td>
-            <td>{{ result.Anzahl_Trades }}</td>
+            <td>+{{ result['Gesamtrendite'] }}%</td>
+            <td>{{ result['Gewinnrate'] }}%</td>
+            <td>{{ result['Anzahl Trades'] }}</td>
           </tr>
           {% endfor %}
         </tbody>
