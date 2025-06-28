@@ -22,13 +22,12 @@ def index():
 
 @app.route('/dashboard')
 def dashboard():
-    """Liest die Backtest-Ergebnisse inklusive Equity-Kurven und zeigt sie an."""
+    """Liest NUR die Ergebnisse der finalen Tages-Strategie."""
     results = []
     try:
-        # Liest die Ergebnisse der profitablen Tages-Strategie
+        # Wir laden jetzt nur noch die eine, relevante Ergebnis-Datei
         with open('backtest_results_daily.json', 'r', encoding='utf-8') as f:
             results = json.load(f)
-        print("Erfolgreich 'backtest_results_daily.json' geladen.")
     except Exception as e:
         print(f"Warnung: backtest_results_daily.json nicht gefunden: {e}")
     

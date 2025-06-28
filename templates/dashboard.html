@@ -4,7 +4,6 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Analyse-Dashboard</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
       :root {
         --bg-color: #f4f7f9;
@@ -14,8 +13,6 @@
         --border-color: #e2e8f0;
         --hover-color: #f7fafc;
         --switch-bg-color: #ccc;
-        --green-positive: #2f855a;
-        --red-negative: #c53030;
       }
       body.dark-mode {
         --bg-color: #1a202c;
@@ -25,8 +22,6 @@
         --border-color: #4a5568;
         --hover-color: #4a5568;
         --switch-bg-color: #718096;
-        --green-positive: #68d391;
-        --red-negative: #fc8181;
       }
       * {
         box-sizing: border-box;
@@ -102,6 +97,19 @@
       tr:nth-child(even) {
         background-color: var(--bg-color);
       }
+      .verdict {
+        text-align: center;
+        font-size: 1.2em;
+        margin: 30px auto;
+        max-width: 800px;
+        background-color: var(--card-bg-color);
+        padding: 15px;
+        border-radius: 8px;
+        border-left: 5px solid #28a745;
+      }
+      body.dark-mode .verdict {
+        border-left-color: #03dac6;
+      }
       .back-link {
         display: block;
         text-align: center;
@@ -157,7 +165,7 @@
   </head>
   <body>
     <div class="header-container">
-      <h1>Analyse-Dashboard: Performance</h1>
+      <h1>Analyse-Dashboard: Halle der Champions</h1>
       <div class="theme-switch-wrapper">
         <label class="theme-switch" for="checkbox">
           <input type="checkbox" id="checkbox" />
@@ -166,99 +174,121 @@
       </div>
     </div>
 
-    {% for result in results %}
-    <h2>🏆 Strategie-Performance für: {{ result.Symbol }}</h2>
+    <div class="verdict">
+      <p>
+        <strong>Fazit:</strong> Die <strong>"Genie"-Strategie</strong> ist der
+        Champion nach professionellen Maßstäben mit der höchsten Gewinnrate und
+        der besten risiko-adjustierten Rendite (Sharpe Ratio).
+      </p>
+    </div>
+
+    <h2>🏆 "Genie"-Strategie (4H + Tages-Kontext)</h2>
     <div class="container">
       <table>
         <thead>
           <tr>
-            <th>Gesamtrendite</th>
-            <th>Gewinnrate</th>
+            <th>Symbol</th>
+            <th>Konfidenz</th>
+            <th>Trend-Periode (4h)</th>
+            <th>Rendite (%)</th>
+            <th>Gewinnrate (%)</th>
             <th>Sharpe Ratio</th>
-            <th>Anzahl Trades</th>
+            <th>Trades</th>
           </tr>
         </thead>
         <tbody>
+          {% for result in results.genius %}
           <tr>
-            <td>+{{ result['Gesamtrendite_%'] }}%</td>
+            <td><strong>{{ result.Symbol }}</strong></td>
+            <td>{{ result.Konfidenz }}</td>
+            <td>{{ result.Trend_Periode_4h }}</td>
+            <td>+{{ result['Rendite_%'] }}%</td>
             <td>{{ result['Gewinnrate_%'] }}%</td>
             <td>{{ result.Sharpe_Ratio }}</td>
             <td>{{ result.Anzahl_Trades }}</td>
           </tr>
+          {% endfor %}
         </tbody>
       </table>
     </div>
 
-    <div
-      id="chart-container-{{ result.Symbol.replace('/', '') }}"
-      class="container"
-      style="height: 50vh"
-    >
-      <canvas id="equity-chart-{{ result.Symbol.replace('/', '') }}"></canvas>
+    <h2>🥈 Tages-Strategie (Der "Power-Hitter")</h2>
+    <div class="container">
+      <table>
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th>Konfidenz</th>
+            <th>Trend-Periode</th>
+            <th>Rendite (%)</th>
+            <th>Gewinnrate (%)</th>
+            <th>Sharpe Ratio</th>
+            <th>Trades</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for result in results.daily %}
+          <tr>
+            <td><strong>{{ result.Symbol }}</strong></td>
+            <td>{{ result.Konfidenz }}</td>
+            <td>{{ result.Trend_Periode }}</td>
+            <td>+{{ result['Rendite_%'] }}%</td>
+            <td>{{ result['Gewinnrate_%'] }}%</td>
+            <td>{{ result.Sharpe_Ratio }}</td>
+            <td>{{ result.Anzahl_Trades }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
-    {% endfor %}
+
+    <h2>🥉 4-Stunden-Strategie (Der "Präzisions-Chirurg")</h2>
+    <div class="container">
+      <table>
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th>Konfidenz</th>
+            <th>Trend-Periode (4h)</th>
+            <th>Rendite (%)</th>
+            <th>Gewinnrate (%)</th>
+            <th>Sharpe Ratio</th>
+            <th>Trades</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for result in results.four_hour %}
+          <tr>
+            <td><strong>{{ result.Symbol }}</strong></td>
+            <td>{{ result.Konfidenz }}</td>
+            <td>{{ result.Trend_Periode }}</td>
+            <td>+{{ result['Rendite_%'] }}%</td>
+            <td>{{ result['Gewinnrate_%'] }}%</td>
+            <td>{{ result.Sharpe_Ratio }}</td>
+            <td>{{ result.Anzahl_Trades }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
 
     <a href="/" class="back-link">Zurück zu den Live-Signalen</a>
 
     <script>
-      const themeSwitch = document.getElementById('checkbox');
-      const currentTheme = localStorage.getItem('theme');
+      const themeSwitch = document.getElementById("checkbox");
+      const currentTheme = localStorage.getItem("theme");
       if (currentTheme) {
-          document.body.classList.add(currentTheme);
-          if (currentTheme === 'dark-mode') { themeSwitch.checked = true; }
+        document.body.classList.add(currentTheme);
+        if (currentTheme === "dark-mode") {
+          themeSwitch.checked = true;
+        }
       }
-      themeSwitch.addEventListener('change', function(event) {
-          document.body.classList.toggle('dark-mode', event.target.checked);
-          localStorage.setItem('theme', event.target.checked ? 'dark-mode' : 'light-mode');
-          // Hier könnte man die Chart-Farben bei Theme-Wechsel aktualisieren, falls gewünscht
-      });
-
-      document.addEventListener('DOMContentLoaded', function() {
-          const resultsData = {{ results | tojson }};
-
-          resultsData.forEach(result => {
-              const symbolId = result.Symbol.replace('/', '');
-              const ctx = document.getElementById(`equity-chart-${symbolId}`).getContext('2d');
-
-              const labels = result.equity_curve.map(item => item.timestamp);
-              const data = result.equity_curve.map(item => item.equity);
-
-              new Chart(ctx, {
-                  type: 'line',
-                  data: {
-                      labels: labels,
-                      datasets: [{
-                          label: `Kapitalverlauf für ${result.Symbol}`,
-                          data: data,
-                          borderColor: document.body.classList.contains('dark-mode') ? '#63b3ed' : '#2c5282',
-                          backgroundColor: document.body.classList.contains('dark-mode') ? 'rgba(99, 179, 237, 0.1)' : 'rgba(44, 82, 130, 0.1)',
-                          fill: true,
-                          tension: 0.1,
-                          borderWidth: 2,
-                          pointRadius: 0,
-                      }]
-                  },
-                  options: {
-                      responsive: true,
-                      maintainAspectRatio: false,
-                      scales: {
-                          y: {
-                              ticks: { callback: value => `$${value}`, color: document.body.classList.contains('dark-mode') ? '#e2e8f0' : '#3d4852' },
-                              grid: { color: document.body.classList.contains('dark-mode') ? '#4a5568' : '#e2e8f0' }
-                          },
-                          x: {
-                              ticks: { color: document.body.classList.contains('dark-mode') ? '#e2e8f0' : '#3d4852' },
-                              grid: { color: document.body.classList.contains('dark-mode') ? '#4a5568' : '#e2e8f0' }
-                          }
-                      },
-                      plugins: {
-                          legend: {
-                              labels: { color: document.body.classList.contains('dark-mode') ? '#e2e8f0' : '#3d4852' }
-                          }
-                      }
-                  }
-              });
-          });
+      themeSwitch.addEventListener("change", function (event) {
+        document.body.classList.toggle("dark-mode", event.target.checked);
+        localStorage.setItem(
+          "theme",
+          event.target.checked ? "dark-mode" : "light-mode"
+        );
       });
     </script>
   </body>
