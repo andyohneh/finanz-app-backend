@@ -1,15 +1,17 @@
-# ki_trainer_swing.py (Spezialisiert auf Tages-Daten)
+# ki_trainer_daily.py (LEGENDARY-STANDARD 2.1 - Finale Version)
 import pandas as pd
 import numpy as np
 import ta
 import joblib
 import os
 from sqlalchemy import text
-from database import engine, historical_data_daily # WICHTIG: Neue Tabelle importieren
-from datetime import datetime
-from sklearn.model_selection import train_test_split, GridSearchCV
+from database import engine, historical_data_daily
+from sklearn.model_selection import train_test_split, RandomizedSearchCV
 from sklearn.ensemble import RandomForestClassifier
+from xgboost import XGBClassifier
+from lightgbm import LGBMClassifier
 from sklearn.metrics import classification_report
+from scipy.stats import randint
 
 # --- KONFIGURATION ---
 MODEL_DIR = "models"
@@ -20,7 +22,6 @@ def load_data_from_db(symbol: str):
     print(f"Lade alle Tages-Daten für {symbol} aus der Datenbank...")
     try:
         with engine.connect() as conn:
-            # WICHTIG: Greift auf die 'historical_data_daily' Tabelle zu
             query = text("SELECT * FROM historical_data_daily WHERE symbol = :symbol ORDER BY timestamp ASC")
             df = pd.read_sql_query(query, conn, params={'symbol': symbol})
             print(f"Erfolgreich {len(df)} Tages-Datenpunkte geladen.")
@@ -30,7 +31,7 @@ def load_data_from_db(symbol: str):
         return pd.DataFrame()
 
 def add_features(df: pd.DataFrame) -> pd.DataFrame:
-    # Die Feature-Berechnung bleibt gleich, aber die Fenster (z.B. 20, 50) beziehen sich jetzt auf Tage.
+    """Fügt die 10 Kern-Indikatoren als Features hinzu."""
     print(f"Füge für {len(df)} Tages-Datenpunkte Features hinzu...")
     df['sma_fast'] = ta.trend.sma_indicator(df['close'], window=20)
     df['sma_slow'] = ta.trend.sma_indicator(df['close'], window=50)
@@ -49,7 +50,7 @@ def add_features(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 def get_labels_triple_barrier(prices, tp_mult, sl_mult, max_period):
-    # Diese Funktion bleibt unverändert, aber `max_period` bedeutet jetzt Tage.
+    """Erstellt Labels basierend auf der Triple-Barrier-Methode."""
     labels = pd.Series(np.nan, index=prices.index)
     log_returns = np.log(prices['close'] / prices['close'].shift(1))
     volatility = log_returns.rolling(window=100).std() * 2
@@ -67,9 +68,8 @@ def get_labels_triple_barrier(prices, tp_mult, sl_mult, max_period):
             labels.iloc[i] = 0
     return labels
 
-def add_labels(df, tp_mult=3, sl_mult=1.5, max_period=60):
-    # max_period=60 bedeutet jetzt: Trade wird maximal 60 Tage gehalten.
-    # Wir passen die Multiplikatoren leicht an für den längeren Zeithorizont.
+def add_labels(df: pd.DataFrame, tp_mult=2.0, sl_mult=1.5, max_period=60) -> pd.DataFrame:
+    """Fügt die Ziel-Labels zum DataFrame hinzu."""
     print(f"Starte Triple-Barrier-Labeling (max_period = {max_period} Tage)...")
     labels = get_labels_triple_barrier(df[['close']], tp_mult, sl_mult, max_period)
     df['label'] = labels
@@ -78,46 +78,72 @@ def add_labels(df, tp_mult=3, sl_mult=1.5, max_period=60):
     print(f"Labeling abgeschlossen. Verteilung:\n{df['label'].value_counts(normalize=True)}")
     return df
 
-def train_and_save_model(df, symbol):
-    """Trainiert das Swing-Trading-Modell mit Hyperparameter-Tuning."""
+def train_legendary_model(df, symbol):
+    """Führt einen Wettkampf zwischen KI-Modellen durch, um das beste zu finden."""
     feature_columns = ['sma_fast', 'sma_slow', 'rsi', 'macd', 'macd_signal', 'atr', 'bb_high', 'bb_low', 'stoch_k', 'stoch_d']
     X = df[feature_columns]
-    y = df['label']
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+    y = df['label'] + 1  # Wichtig: Label-Übersetzung für XGBoost/LightGBM
     
-    param_grid = { 'n_estimators': [100, 200], 'max_depth': [10, 20, None], 'min_samples_leaf': [1, 2, 4], 'max_features': ['sqrt', 'log2'] }
-    model = RandomForestClassifier(random_state=42, class_weight='balanced')
-    grid_search = GridSearchCV(estimator=model, param_grid=param_grid, cv=3, n_jobs=-1, verbose=2, scoring='accuracy')
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
 
-    print("\n--- Starte Hyperparameter-Tuning für Swing-Modell... ---")
-    grid_search.fit(X_train, y_train)
-    print("--- Hyperparameter-Tuning abgeschlossen! ---")
+    model_params = {
+        'RandomForestClassifier': {
+            'model': RandomForestClassifier(random_state=42, class_weight='balanced'),
+            'params': {'n_estimators': randint(100, 500), 'max_depth': [10, 20, 30, None], 'min_samples_leaf': randint(1, 5)}
+        },
+        'XGBClassifier': {
+            'model': XGBClassifier(random_state=42, use_label_encoder=False, eval_metric='mlogloss'),
+            'params': {'n_estimators': randint(100, 500), 'max_depth': randint(3, 10), 'learning_rate': [0.01, 0.1, 0.2]}
+        },
+        'LGBMClassifier': {
+            'model': LGBMClassifier(random_state=42, class_weight='balanced', verbose=-1),
+            'params': {'n_estimators': randint(100, 500), 'learning_rate': [0.01, 0.1, 0.2], 'num_leaves': randint(20, 50)}
+        }
+    }
 
-    print(f"Beste gefundene Parameter: {grid_search.best_params_}")
-    best_model = grid_search.best_estimator_
+    best_score = 0
+    best_model = None
+    champion_name = ""
 
-    print("\nPerformance des besten SWING-Modells auf Test-Daten:")
+    print("\n--- STARTE LEGENDÄREN KI-WETTKAMPF ---")
+    for model_name, mp in model_params.items():
+        print(f"\n===== Teste Champion: {model_name} =====")
+        random_search = RandomizedSearchCV(mp['model'], param_distributions=mp['params'], n_iter=25, cv=3, scoring='accuracy', n_jobs=-1, random_state=42, verbose=1)
+        random_search.fit(X_train, y_train)
+        
+        print(f"Beste Parameter für {model_name}: {random_search.best_params_}")
+        print(f"Bester Score für {model_name}: {random_search.best_score_:.4f}")
+        
+        if random_search.best_score_ > best_score:
+            best_score = random_search.best_score_
+            best_model = random_search.best_estimator_
+            champion_name = model_name
+            print(f"--- NEUER CHAMPION: {model_name} ---")
+
+    print(f"\n\n--- DER SIEGER IST: {champion_name} mit einem Score von {best_score:.4f} ---")
+    
+    print("\nPerformance des legendären Modells auf den Test-Daten:")
     y_pred = best_model.predict(X_test)
-    print(classification_report(y_test, y_pred))
-
+    print(classification_report(y_test, y_pred, target_names=['Verkaufen (-1)', 'Halten (0)', 'Kaufen (1)']))
+    
     os.makedirs(MODEL_DIR, exist_ok=True)
     symbol_filename = symbol.replace('/', '')
-    # WICHTIG: Modell mit neuem Namen speichern
     model_path = os.path.join(MODEL_DIR, f'model_{symbol_filename}_swing.pkl')
     joblib.dump(best_model, model_path)
-    print(f"Bestes Swing-Modell erfolgreich gespeichert unter: {model_path}")
+    print(f"Legendäres Modell erfolgreich gespeichert unter: {model_path}")
 
 def run_training_pipeline():
+    """Führt den gesamten Trainingsprozess für alle Symbole aus."""
     for symbol in SYMBOLS:
-        print(f"\n--- Starte Swing-Trading-Verarbeitung für {symbol} ---")
+        print(f"\n--- Starte Daily-Verarbeitung für {symbol} ---")
         df = load_data_from_db(symbol)
-        if not df.empty and len(df) > 250:
+        if df is not None and not df.empty and len(df) > 250:
             df_features = add_features(df)
             df_labeled = add_labels(df_features)
             if not df_labeled.empty:
-                train_and_save_model(df_labeled, symbol)
+                train_legendary_model(df_labeled, symbol)
         else:
-            print(f"Nicht genügend Tages-Daten für {symbol} geladen, um das Training zu starten.")
+            print(f"Nicht genügend Daten für {symbol} geladen, um das Training zu starten.")
 
 if __name__ == '__main__':
     run_training_pipeline()

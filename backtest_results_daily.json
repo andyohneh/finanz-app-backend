@@ -1,22 +1,186 @@
 [
     {
-        "Symbol":"BTC\/USD",
-        "Konfidenz":"0.75",
-        "Trend_Periode":150,
-        "Rendite_%":383.58,
-        "Gewinnrate_%":77.54,
-        "Sharpe_Ratio":1.94,
-        "Anzahl_Trades":187,
-        "Endkapital_$":483.58
+        "Symbol": "BTC/USD",
+        "Gesamtrendite_%": 26.55,
+        "Gewinnrate_%": 58.62,
+        "Sharpe_Ratio": 4.15,
+        "Anzahl_Trades": 29,
+        "Endkapital_$": 126.55,
+        "equity_curve": [
+            {
+                "timestamp": "2015-02-13",
+                "equity": 100
+            },
+            {
+                "timestamp": "2016-01-20",
+                "equity": 103.9922504565545
+            },
+            {
+                "timestamp": "2016-01-22",
+                "equity": 100.88837221024289
+            },
+            {
+                "timestamp": "2016-02-18",
+                "equity": 105.39115429528212
+            },
+            {
+                "timestamp": "2016-02-21",
+                "equity": 107.71908451965963
+            },
+            {
+                "timestamp": "2016-02-23",
+                "equity": 105.75465740971161
+            },
+            {
+                "timestamp": "2016-03-05",
+                "equity": 103.66131753624546
+            },
+            {
+                "timestamp": "2016-04-20",
+                "equity": 106.10807844985713
+            },
+            {
+                "timestamp": "2016-08-02",
+                "equity": 104.18413458727917
+            },
+            {
+                "timestamp": "2016-09-08",
+                "equity": 107.40890620452616
+            },
+            {
+                "timestamp": "2019-07-09",
+                "equity": 114.38782807302618
+            },
+            {
+                "timestamp": "2019-07-16",
+                "equity": 108.7138211342936
+            },
+            {
+                "timestamp": "2019-09-24",
+                "equity": 102.50304825935953
+            },
+            {
+                "timestamp": "2020-04-30",
+                "equity": 105.63651268834532
+            },
+            {
+                "timestamp": "2020-05-07",
+                "equity": 109.19940837789602
+            },
+            {
+                "timestamp": "2020-05-10",
+                "equity": 106.53723696673957
+            },
+            {
+                "timestamp": "2020-05-14",
+                "equity": 110.82171554052056
+            },
+            {
+                "timestamp": "2020-05-21",
+                "equity": 107.61084821177803
+            },
+            {
+                "timestamp": "2020-06-01",
+                "equity": 111.88878412026246
+            },
+            {
+                "timestamp": "2020-06-02",
+                "equity": 109.19428965262796
+            },
+            {
+                "timestamp": "2020-07-27",
+                "equity": 113.03148965636065
+            },
+            {
+                "timestamp": "2020-08-01",
+                "equity": 115.12408616874734
+            },
+            {
+                "timestamp": "2020-08-06",
+                "equity": 118.08189518738668
+            },
+            {
+                "timestamp": "2021-04-13",
+                "equity": 123.66980394217477
+            },
+            {
+                "timestamp": "2023-04-11",
+                "equity": 127.40963836585706
+            },
+            {
+                "timestamp": "2024-04-08",
+                "equity": 132.80196364037653
+            },
+            {
+                "timestamp": "2024-05-01",
+                "equity": 128.9344103552717
+            },
+            {
+                "timestamp": "2024-11-25",
+                "equity": 126.36896836887138
+            },
+            {
+                "timestamp": "2024-12-15",
+                "equity": 129.6457709153823
+            },
+            {
+                "timestamp": "2025-01-13",
+                "equity": 126.54641620318023
+            }
+        ]
     },
     {
-        "Symbol":"XAU\/USD",
-        "Konfidenz":"0.75",
-        "Trend_Periode":150,
-        "Rendite_%":154.2,
-        "Gewinnrate_%":81.91,
-        "Sharpe_Ratio":1.87,
-        "Anzahl_Trades":188,
-        "Endkapital_$":254.2
+        "Symbol": "XAU/USD",
+        "Gesamtrendite_%": 9.49,
+        "Gewinnrate_%": 80.0,
+        "Sharpe_Ratio": 11.92,
+        "Anzahl_Trades": 10,
+        "Endkapital_$": 109.49,
+        "equity_curve": [
+            {
+                "timestamp": "2007-01-02",
+                "equity": 100
+            },
+            {
+                "timestamp": "2009-02-18",
+                "equity": 102.54312983501087
+            },
+            {
+                "timestamp": "2009-03-20",
+                "equity": 104.84049193966483
+            },
+            {
+                "timestamp": "2009-05-22",
+                "equity": 106.32538197017949
+            },
+            {
+                "timestamp": "2016-07-06",
+                "equity": 107.93023982500196
+            },
+            {
+                "timestamp": "2018-01-24",
+                "equity": 108.63820472596622
+            },
+            {
+                "timestamp": "2019-09-24",
+                "equity": 109.96227179017752
+            },
+            {
+                "timestamp": "2020-04-21",
+                "equity": 108.15083394241691
+            },
+            {
+                "timestamp": "2023-04-13",
+                "equity": 109.46808243281295
+            },
+            {
+                "timestamp": "2023-06-29",
+                "equity": 108.53226107830157
+            },
+            {
+                "timestamp": "2023-07-18",
+                "equity": 109.49065215789463
+            }
+        ]
     }
 ]

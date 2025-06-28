@@ -1,4 +1,4 @@
-# app.py (Finale Version mit Vergleichs-Dashboard)
+# app.py (Finale Platin-Version, die Equity-Kurven an das Dashboard sendet)
 import os
 import json
 from flask import Flask, jsonify, render_template, send_from_directory, request
@@ -22,31 +22,16 @@ def index():
 
 @app.route('/dashboard')
 def dashboard():
-    """Liest ALLE Backtest-Ergebnisse und zeigt sie zum Vergleich an."""
-    results = {'daily': [], 'four_hour': [], 'genius': []}
-    
-    # Lade Ergebnisse der Tages-Strategie
+    """Liest die Backtest-Ergebnisse inklusive Equity-Kurven und zeigt sie an."""
+    results = []
     try:
-        # Hinweis: Der Dateiname hier muss exakt dem Namen der Datei entsprechen, die dein `backtester_daily.py` speichert.
+        # Liest die Ergebnisse der profitablen Tages-Strategie
         with open('backtest_results_daily.json', 'r', encoding='utf-8') as f:
-            results['daily'] = json.load(f)
+            results = json.load(f)
+        print("Erfolgreich 'backtest_results_daily.json' geladen.")
     except Exception as e:
         print(f"Warnung: backtest_results_daily.json nicht gefunden: {e}")
     
-    # Lade Ergebnisse der 4-Stunden-Strategie
-    try:
-        with open('backtest_results_4h.json', 'r', encoding='utf-8') as f:
-            results['four_hour'] = json.load(f)
-    except Exception as e:
-        print(f"Warnung: backtest_results_4h.json nicht gefunden: {e}")
-
-    # Lade Ergebnisse der "Genie"-Strategie
-    try:
-        with open('backtest_results_genius.json', 'r', encoding='utf-8') as f:
-            results['genius'] = json.load(f)
-    except Exception as e:
-        print(f"Warnung: backtest_results_genius.json nicht gefunden: {e}")
-
     return render_template('dashboard.html', results=results)
 
 # Routen für PWA-Dateien
@@ -54,10 +39,10 @@ def dashboard():
 def serve_manifest():
     return send_from_directory(app.root_path, 'manifest.json')
 
-@app.route('/sw.js')
-def serve_sw():
-    return send_from_directory(app.static_folder, 'sw.js')
-
+# Deaktivierte Route für den Service Worker, kann bei Bedarf reaktiviert werden
+#@app.route('/sw.js')
+#def serve_sw():
+#    return send_from_directory(app.static_folder, 'sw.js')
 
 # --- API Routen ---
 
@@ -111,9 +96,9 @@ def get_assets():
 
 @app.route('/historical-data/<symbol>')
 def get_historical_data(symbol):
-    """Holt die historischen 4H-Daten für die Charts, passend zur Live-Strategie."""
+    """Holt die historischen 4H-Daten für die Charts."""
     db_symbol = f"{symbol[:-3]}/{symbol[-3:]}"
-    query = text("SELECT timestamp, close FROM historical_data_4h WHERE symbol = :symbol_param ORDER BY timestamp DESC LIMIT 6")
+    query = text("SELECT timestamp, close FROM historical_data_4h WHERE symbol = :symbol_param ORDER BY timestamp DESC LIMIT 60")
     try:
         with engine.connect() as conn:
             result = conn.execute(query, {"symbol_param": db_symbol}).fetchall()
