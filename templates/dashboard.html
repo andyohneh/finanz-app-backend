@@ -4,7 +4,6 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Analyse-Dashboard</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
       :root {
         --bg-color: #f4f7f9;
@@ -187,6 +186,12 @@
             <td>{{ result.Sharpe_Ratio }}</td>
             <td>{{ result.Anzahl_Trades }}</td>
           </tr>
+          {% else %}
+          <tr>
+            <td colspan="5" style="text-align: center">
+              Keine Long-Strategie-Daten gefunden.
+            </td>
+          </tr>
           {% endfor %}
         </tbody>
       </table>
@@ -200,16 +205,24 @@
             <th>Symbol</th>
             <th>Gesamtrendite (%)</th>
             <th>Gewinnrate (%)</th>
-            <th>Anzahl Trades</th>
+            <th>Sharpe Ratio</th>
+            <th>Trades</th>
           </tr>
         </thead>
         <tbody>
           {% for result in results.short %}
           <tr>
             <td><strong>{{ result.Symbol }}</strong></td>
-            <td>+{{ result['Gesamtrendite'] }}%</td>
-            <td>{{ result['Gewinnrate'] }}%</td>
-            <td>{{ result['Anzahl Trades'] }}</td>
+            <td>{{ result['Gesamtrendite_%'] }}%</td>
+            <td>{{ result['Gewinnrate_%'] }}%</td>
+            <td>{{ result.Sharpe_Ratio }}</td>
+            <td>{{ result.Anzahl_Trades }}</td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="5" style="text-align: center">
+              Keine Short-Strategie-Daten gefunden.
+            </td>
           </tr>
           {% endfor %}
         </tbody>
