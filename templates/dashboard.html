@@ -174,7 +174,7 @@
             <th>Gesamtrendite (%)</th>
             <th>Gewinnrate (%)</th>
             <th>Sharpe Ratio</th>
-            <th>Trades</th>
+            <th>Anzahl Trades</th>
           </tr>
         </thead>
         <tbody>
@@ -189,7 +189,8 @@
           {% else %}
           <tr>
             <td colspan="5" style="text-align: center">
-              Keine Long-Strategie-Daten gefunden.
+              Keine Long-Strategie-Daten gefunden. (Führe backtester_daily.py
+              aus)
             </td>
           </tr>
           {% endfor %}
@@ -206,7 +207,7 @@
             <th>Gesamtrendite (%)</th>
             <th>Gewinnrate (%)</th>
             <th>Sharpe Ratio</th>
-            <th>Trades</th>
+            <th>Anzahl Trades</th>
           </tr>
         </thead>
         <tbody>
@@ -221,7 +222,8 @@
           {% else %}
           <tr>
             <td colspan="5" style="text-align: center">
-              Keine Short-Strategie-Daten gefunden.
+              Keine Short-Strategie-Daten gefunden. (Führe backtester_short.py
+              aus)
             </td>
           </tr>
           {% endfor %}
