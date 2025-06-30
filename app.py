@@ -15,31 +15,24 @@ CORS(app)
 
 # --- ROUTEN ---
 
-@app.route('/')
-def index():
-    """Zeigt die Hauptseite (Live-Signale) an."""
-    return render_template('index.html')
-
 @app.route('/dashboard')
 def dashboard():
-    """Liest die Backtest-Ergebnisse der finalen Long- und Short-Tagesstrategien."""
+    """Liest die Backtest-Ergebnisse mit den finalen, korrekten Namen."""
     results = {'long': [], 'short': []}
     
     try:
-        with open('backtest_results_daily_long.json', 'r', encoding='utf-8') as f:
+        # Sucht jetzt nach der korrekten Datei für die Long-Strategie
+        with open('backtest_results_daily.json', 'r', encoding='utf-8') as f:
             results['long'] = json.load(f)
     except FileNotFoundError:
-        print("Warnung: backtest_results_daily_long.json nicht gefunden.")
-    except Exception as e:
-        print(f"Fehler beim Laden von daily_long.json: {e}")
+        print("Warnung: backtest_results_daily.json nicht gefunden.")
     
     try:
-        with open('backtest_results_daily_short.json', 'r', encoding='utf-8') as f:
+        # Sucht nach der korrekten Datei für die Short-Strategie
+        with open('backtest_results_short.json', 'r', encoding='utf-8') as f:
             results['short'] = json.load(f)
     except FileNotFoundError:
-        print("Warnung: backtest_results_daily_short.json nicht gefunden.")
-    except Exception as e:
-        print(f"Fehler beim Laden von daily_short.json: {e}")
+        print("Warnung: backtest_results_short.json nicht gefunden.")
     
     return render_template('dashboard.html', results=results)
 

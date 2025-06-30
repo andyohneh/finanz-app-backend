@@ -5,7 +5,6 @@
         "Gewinnrate_%": 58.62,
         "Sharpe_Ratio": 4.15,
         "Anzahl_Trades": 29,
-        "Endkapital_$": 126.55,
         "equity_curve": [
             {
                 "timestamp": "2015-02-13",
@@ -135,7 +134,6 @@
         "Gewinnrate_%": 80.0,
         "Sharpe_Ratio": 11.92,
         "Anzahl_Trades": 10,
-        "Endkapital_$": 109.49,
         "equity_curve": [
             {
                 "timestamp": "2007-01-02",
