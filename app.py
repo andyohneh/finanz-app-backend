@@ -10,7 +10,7 @@ from database import engine, push_subscriptions, historical_data_daily
 
 # --- GRUNDEINSTELLUNGEN ---
 load_dotenv()
-app = Flask(__name__, template_folder='templates', static_folder='static') 
+app = Flask(__name__, template_folder='templates', static_folder='static')
 CORS(app)
 
 # --- ROUTEN ---
@@ -27,12 +27,12 @@ def dashboard():
     
     try:
         # Liest die Ergebnisse der Long-Strategie
-        with open('backtest_results_daily_long.json', 'r', encoding='utf-8') as f:
+        with open('backtest_results_daily.json', 'r', encoding='utf-8') as f:
             results['long'] = json.load(f)
     except FileNotFoundError:
-        print("Warnung: backtest_results_daily_long.json nicht gefunden.")
+        print("Warnung: backtest_results_daily.json nicht gefunden.")
     except Exception as e:
-        print(f"Fehler beim Laden von daily_long.json: {e}")
+        print(f"Fehler beim Laden von backtest_results_daily.json: {e}")
     
     try:
         # Liest die Ergebnisse der Short-Strategie
@@ -41,7 +41,7 @@ def dashboard():
     except FileNotFoundError:
         print("Warnung: backtest_results_daily_short.json nicht gefunden.")
     except Exception as e:
-        print(f"Fehler beim Laden von daily_short.json: {e}")
+        print(f"Fehler beim Laden von backtest_results_daily_short.json: {e}")
     
     return render_template('dashboard.html', results=results)
 
@@ -71,6 +71,7 @@ def save_subscription():
             conn.commit()
             return jsonify({'success': True}), 201
     except Exception as e:
+        print(f"Fehler beim Speichern des Abonnements: {e}")
         return jsonify({'success': False, 'error': 'Interner Serverfehler'}), 500
 
 @app.route('/api/assets')

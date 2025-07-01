@@ -1,4 +1,4 @@
-# backtester_short.py (Version 1.2 - Korrigiert)
+# backtester_short.py (Version 1.3 - Finale Korrektur)
 import pandas as pd
 import numpy as np
 import joblib
@@ -12,7 +12,7 @@ from database import engine, historical_data_daily
 MODEL_DIR = "models"
 SYMBOLS = ['BTC/USD', 'XAU/USD']
 INITIAL_CAPITAL = 100
-TRADE_SIZE_USD = 45
+TRADE_SIZE_USD = 10
 TRANSACTION_COST_PERCENT = 0.001
 CONFIDENCE_THRESHOLD = 0.60 
 TREND_SMA_PERIOD = 50
@@ -20,7 +20,7 @@ TAKE_PROFIT_ATR_MULTIPLIER = 2.0
 STOP_LOSS_ATR_MULTIPLIER = 1.5
 
 def load_all_data(symbol: str) -> pd.DataFrame:
-    # ... (unverändert) ...
+    """Lädt ALLE TAGES-Daten für ein Symbol."""
     print(f"Lade alle Tages-Daten für {symbol}...")
     try:
         with engine.connect() as conn:
@@ -28,56 +28,70 @@ def load_all_data(symbol: str) -> pd.DataFrame:
             df = pd.read_sql_query(query, conn, params={'symbol': symbol})
             df['timestamp'] = pd.to_datetime(df['timestamp'])
             return df
-    except Exception as e: return pd.DataFrame()
+    except Exception as e: 
+        print(f"Fehler beim Laden der Daten: {e}")
+        return pd.DataFrame()
 
 def add_features(df: pd.DataFrame, trend_sma_period: int) -> pd.DataFrame:
-    # ... (unverändert) ...
+    """Fügt Indikatoren basierend auf TAGES-Daten hinzu."""
     print(f"Füge Features für Short-Backtest hinzu...")
-    df['sma_fast'] = ta.trend.sma_indicator(df['close'], window=20); df['sma_slow'] = ta.trend.sma_indicator(df['close'], window=50)
-    df['rsi'] = ta.momentum.rsi(df['close'], window=14)
-    macd = ta.trend.MACD(df['close'], window_slow=26, window_fast=12, window_sign=9); df['macd'] = macd.macd(); df['macd_signal'] = macd.macd_signal()
-    df['atr'] = ta.volatility.AverageTrueRange(high=df['high'], low=df['low'], close=df['close'], window=14).average_true_range()
-    bollinger = ta.volatility.BollingerBands(close=df['close'], window=20, window_dev=2); df['bb_high'] = bollinger.bollinger_hband(); df['bb_low'] = bollinger.bollinger_lband()
-    stoch = ta.momentum.StochasticOscillator(high=df['high'], low=df['low'], close=df['close'], window=14, smooth_window=3); df['stoch_k'] = stoch.stoch(); df['stoch_d'] = stoch.stoch_signal()
-    df['sma_trend'] = ta.trend.sma_indicator(df['close'], window=trend_sma_period)
-    df.dropna(inplace=True)
-    return df
+    df_copy = df.copy()
+    df_copy['sma_fast'] = ta.trend.sma_indicator(df_copy['close'], window=20)
+    df_copy['sma_slow'] = ta.trend.sma_indicator(df_copy['close'], window=50)
+    df_copy['rsi'] = ta.momentum.rsi(df_copy['close'], window=14)
+    macd = ta.trend.MACD(df_copy['close'], window_slow=26, window_fast=12, window_sign=9)
+    df_copy['macd'] = macd.macd(); df_copy['macd_signal'] = macd.macd_signal()
+    df_copy['atr'] = ta.volatility.AverageTrueRange(high=df_copy['high'], low=df_copy['low'], close=df_copy['close'], window=14).average_true_range()
+    bollinger = ta.volatility.BollingerBands(close=df_copy['close'], window=20, window_dev=2)
+    df_copy['bb_high'] = bollinger.bollinger_hband(); df_copy['bb_low'] = bollinger.bollinger_lband()
+    stoch = ta.momentum.StochasticOscillator(high=df_copy['high'], low=df_copy['low'], close=df_copy['close'], window=14, smooth_window=3)
+    df_copy['stoch_k'] = stoch.stoch(); df_copy['stoch_d'] = stoch.stoch_signal()
+    df_copy['sma_trend'] = ta.trend.sma_indicator(df_copy['close'], window=trend_sma_period)
+    df_copy.dropna(inplace=True)
+    return df_copy
 
 def run_short_backtest(symbol: str):
+    """Führt den finalen, realistischen Backtest für die Short-Strategie durch."""
     print(f"\n--- Starte finalen SHORT Backtest für {symbol} ---")
     symbol_filename = symbol.replace('/', '')
     model_path = os.path.join(MODEL_DIR, f'model_{symbol_filename}_short.pkl')
-    if not os.path.exists(model_path): return None
+    if not os.path.exists(model_path):
+        print(f"FEHLER: Short-Modell für {symbol} nicht gefunden.")
+        return None
     model = joblib.load(model_path)
 
     df_full = load_all_data(symbol)
-    if df_full.empty: return
+    if df_full.empty: return None
     df = add_features(df_full.copy(), TREND_SMA_PERIOD)
     
     X_full = df[model.feature_names_in_]
     probabilities = model.predict_proba(X_full)
-    df['short_proba'] = probabilities[:, np.where(model.classes_ == 0)[0][0]] # Klasse -1 wurde zu 0
+    # Klasse -1 (unser Short-Signal) wurde beim Training zu 0 verschoben
+    df['short_proba'] = probabilities[:, np.where(model.classes_ == 0)[0][0]] 
 
     capital = INITIAL_CAPITAL
+    equity_curve = [{'timestamp': df['timestamp'].iloc[0].strftime('%Y-%m-%d'), 'equity': INITIAL_CAPITAL}]
     position_open = False
     trades = []
-    # === HIER IST DIE KORREKTUR: Wir erstellen die leere Liste ===
-    equity_curve = [{'timestamp': df['timestamp'].iloc[0].strftime('%Y-%m-%d'), 'equity': INITIAL_CAPITAL}]
-    entry_price, take_profit_price, stop_loss_price, position_size_asset = 0,0,0,0
+    entry_price, take_profit_price, stop_loss_price, position_size_asset = 0, 0, 0, 0
 
     for i in range(len(df)):
         current_timestamp = df['timestamp'].iloc[i]
         if position_open:
             if df['low'].iloc[i] <= take_profit_price:
                 profit_usd = (entry_price - take_profit_price) * position_size_asset
-                capital += profit_usd - (TRADE_SIZE_USD * TRANSACTION_COST_PERCENT * 2)
-                trades.append({'profit_usd': profit_usd}); position_open = False
+                capital += profit_usd - (TRADE_SIZE_USD * TRANSACTION_COST_PERCENT)
+                trades.append({'profit_usd': profit_usd})
+                position_open = False
                 equity_curve.append({'timestamp': current_timestamp.strftime('%Y-%m-%d'), 'equity': capital})
+                continue
             elif df['high'].iloc[i] >= stop_loss_price:
                 profit_usd = (entry_price - stop_loss_price) * position_size_asset
-                capital += profit_usd - (TRADE_SIZE_USD * TRANSACTION_COST_PERCENT * 2)
-                trades.append({'profit_usd': profit_usd}); position_open = False
+                capital += profit_usd - (TRADE_SIZE_USD * TRANSACTION_COST_PERCENT)
+                trades.append({'profit_usd': profit_usd})
+                position_open = False
                 equity_curve.append({'timestamp': current_timestamp.strftime('%Y-%m-%d'), 'equity': capital})
+                continue
             
         if not position_open:
             is_downtrend = df['close'].iloc[i] < df['sma_trend'].iloc[i]
@@ -89,7 +103,7 @@ def run_short_backtest(symbol: str):
                 atr_at_entry = df['atr'].iloc[i]
                 take_profit_price = entry_price - (atr_at_entry * TAKE_PROFIT_ATR_MULTIPLIER)
                 stop_loss_price = entry_price + (atr_at_entry * STOP_LOSS_ATR_MULTIPLIER)
-            
+    
     total_profit_usd = capital - INITIAL_CAPITAL
     total_return_percent = total_profit_usd / INITIAL_CAPITAL * 100
     num_trades = len(trades)
@@ -126,6 +140,6 @@ if __name__ == "__main__":
         try:
             with open('backtest_results_daily_short.json', 'w', encoding='utf-8') as f:
                 json.dump(all_results, f, ensure_ascii=False, indent=4)
-            print("\nErfolgreich 'backtest_results_daily_short.json' mit Equity-Kurven gespeichert.")
+            print("\nErfolgreich 'backtest_results_daily_short.json' gespeichert.")
         except Exception as e:
             print(f"\nFehler beim Speichern der JSON-Datei: {e}")
