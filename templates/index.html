@@ -206,7 +206,7 @@
       Nächstes Signal in: <span id="countdown-timer">--:--:--</span>
     </div>
     <div class="subscribe-container">
-      <button id="subscribe-button">Push-Benachrichtigungen aktivieren</button>
+      <button id="subscribe-button">Push-Benachrichtigungen</button>
     </div>
 
     <div class="container">
@@ -226,7 +226,6 @@
     <div id="chart-container"><canvas id="financial-chart"></canvas></div>
 
     <script>
-      // Alle Funktionen werden zuerst definiert
       let financialChart;
 
       function initChart() {
@@ -387,7 +386,6 @@
         timerElement.textContent = `${f(hours)}:${f(minutes)}:${f(seconds)}`;
       }
 
-      // Der sichere Startpunkt für alle Aktionen
       document.addEventListener("DOMContentLoaded", () => {
         initChart();
         populateTable();
@@ -401,10 +399,9 @@
           document.body.classList.add(currentTheme);
           if (currentTheme === "dark-mode") {
             themeSwitch.checked = true;
-            // Update Chart colors immediately if starting in dark mode
-            const newColor = "#e0e0e0";
-            const newGridColor = "#444";
             if (financialChart) {
+              const newColor = "#e0e0e0";
+              const newGridColor = "#444";
               financialChart.options.plugins.legend.labels.color = newColor;
               financialChart.options.scales.y.ticks.color = newColor;
               financialChart.options.scales.x.ticks.color = newColor;
