@@ -76,7 +76,6 @@
           0 4px 6px -2px rgba(0, 0, 0, 0.05);
         margin-bottom: 2rem;
         border: 1px solid var(--border-color);
-        overflow-x: auto;
       }
       table {
         width: 100%;
@@ -95,15 +94,24 @@
         color: var(--text-color);
         background-color: var(--bg-color);
       }
-      tr:hover {
+      .main-row:hover {
         background-color: var(--hover-color);
         cursor: pointer;
       }
-      tr:nth-child(even) {
-        background-color: var(--bg-color);
+      .details-row {
+        display: none;
       }
-      tr:nth-child(even):hover {
-        background-color: var(--hover-color);
+      .details-row.show {
+        display: table-row;
+      }
+      .details-cell {
+        padding-left: 3rem !important;
+        background-color: var(--bg-color);
+        font-size: 0.9em;
+        border-bottom: 1px solid var(--border-color);
+      }
+      body.dark-mode .details-cell {
+        background-color: #171923;
       }
       #chart-container {
         height: 50vh;
@@ -138,14 +146,6 @@
       }
       body.dark-mode #subscribe-button {
         background-color: #718096;
-      }
-      .countdown-container {
-        font-size: 1.1em;
-        color: var(--text-color);
-        background-color: var(--card-bg-color);
-        padding: 8px 15px;
-        border-radius: 20px;
-        border: 1px solid var(--border-color);
       }
       .theme-switch-wrapper {
         display: flex;
@@ -202,9 +202,6 @@
       </div>
     </div>
     <p class="nav-link"><a href="/dashboard">Zum Analyse-Dashboard</a></p>
-    <div class="countdown-container">
-      Nächstes Signal in: <span id="countdown-timer">--:--:--</span>
-    </div>
     <div class="subscribe-container">
       <button id="subscribe-button">Push-Benachrichtigungen</button>
     </div>
@@ -215,8 +212,6 @@
           <tr>
             <th>Asset</th>
             <th>Signal-Preis</th>
-            <th>Take Profit</th>
-            <th>Stop Loss</th>
             <th>Signal</th>
           </tr>
         </thead>
@@ -312,37 +307,56 @@
       async function populateTable() {
         const tableBody = document.getElementById("financial-data");
         if (!tableBody) return;
-        tableBody.innerHTML = `<tr><td colspan="5" class="loading-text">Lade Daten...</td></tr>`;
+        tableBody.innerHTML = `<tr><td colspan="3" class="loading-text">Lade Daten...</td></tr>`;
         try {
           const response = await fetch("/api/assets");
           const assets = await response.json();
           if (assets.error) throw new Error(assets.error);
           tableBody.innerHTML = "";
-          assets.forEach((data) => {
-            const row = document.createElement("tr");
+
+          assets.forEach((data, index) => {
+            const mainRow = document.createElement("tr");
+            mainRow.classList.add("main-row");
+            mainRow.dataset.index = index;
+
             if (data.color === "green")
-              row.style.backgroundColor = document.body.classList.contains(
+              mainRow.style.backgroundColor = document.body.classList.contains(
                 "dark-mode"
               )
                 ? "#2f4236"
                 : "#c6f6d5";
             else if (data.color === "red")
-              row.style.backgroundColor = document.body.classList.contains(
+              mainRow.style.backgroundColor = document.body.classList.contains(
                 "dark-mode"
               )
                 ? "#4c2b2b"
                 : "#fed7d7";
-            row.innerHTML = `<td><strong>${data.asset}</strong></td><td>${
-              data.entry
-            }</td><td>${data.takeProfit}</td><td>${data.stopLoss}</td><td>${
-              data.signal
-            } ${
+
+            mainRow.innerHTML = `
+                        <td><strong>${data.asset}</strong></td>
+                        <td>${data.entry}</td>
+                        <td>${data.signal} ${
               data.icon && data.icon !== "circle"
                 ? `<i class="fas fa-${data.icon}" style="margin-left: 8px;"></i>`
                 : ""
-            }</td>`;
-            tableBody.appendChild(row);
-            row.addEventListener("click", () => {
+            }</td>
+                    `;
+            tableBody.appendChild(mainRow);
+
+            const detailsRow = document.createElement("tr");
+            detailsRow.classList.add("details-row");
+            detailsRow.id = `details-${index}`;
+            detailsRow.innerHTML = `
+                        <td colspan="3" class="details-cell">
+                            <strong>Take Profit:</strong> ${data.takeProfit} | 
+                            <strong>Stop Loss:</strong> ${data.stopLoss} |
+                            <strong>Signalzeit:</strong> ${data.timestamp}
+                        </td>
+                    `;
+            tableBody.appendChild(detailsRow);
+
+            mainRow.addEventListener("click", () => {
+              detailsRow.classList.toggle("show");
               updateChart(data.asset).then(() => addSignalMarker(data));
             });
           });
@@ -357,41 +371,14 @@
           }
         } catch (error) {
           console.error("Fehler beim Laden der Finanzdaten:", error);
-          tableBody.innerHTML = `<tr><td colspan="5" class="loading-text" style="color: red;">Fehler beim Laden der Daten.</td></tr>`;
+          tableBody.innerHTML = `<tr><td colspan="3" class="loading-text" style="color: red;">Fehler beim Laden der Daten.</td></tr>`;
         }
-      }
-
-      function updateCountdown() {
-        const timerElement = document.getElementById("countdown-timer");
-        if (!timerElement) return;
-        const now = new Date();
-        let targetTime = new Date(
-          Date.UTC(
-            now.getUTCFullYear(),
-            now.getUTCMonth(),
-            now.getUTCDate(),
-            0,
-            5,
-            0
-          )
-        );
-        if (targetTime < now) {
-          targetTime.setUTCDate(targetTime.getUTCDate() + 1);
-        }
-        const diff = targetTime - now;
-        const hours = Math.floor(diff / 3600000);
-        const minutes = Math.floor((diff % 3600000) / 60000);
-        const seconds = Math.floor((diff % 60000) / 1000);
-        const f = (n) => (n < 10 ? "0" + n : n);
-        timerElement.textContent = `${f(hours)}:${f(minutes)}:${f(seconds)}`;
       }
 
       document.addEventListener("DOMContentLoaded", () => {
         initChart();
         populateTable();
         setInterval(populateTable, 60000);
-        updateCountdown();
-        setInterval(updateCountdown, 1000);
 
         const themeSwitch = document.getElementById("checkbox");
         const currentTheme = localStorage.getItem("theme");
@@ -418,56 +405,46 @@
             "theme",
             event.target.checked ? "dark-mode" : "light-mode"
           );
-
-          const newColor = event.target.checked ? "#e0e0e0" : "#333";
-          const newGridColor = event.target.checked ? "#444" : "#ddd";
-          if (financialChart) {
-            financialChart.options.plugins.legend.labels.color = newColor;
-            financialChart.options.scales.y.ticks.color = newColor;
-            financialChart.options.scales.x.ticks.color = newColor;
-            financialChart.options.scales.y.grid.color = newGridColor;
-            financialChart.options.scales.x.grid.color = newGridColor;
-            financialChart.update();
-          }
+          window.location.reload();
         });
 
-        // Logik für Push-Benachrichtigungen
-        const VAPID_PUBLIC_KEY =
-          "BBNrKK7tabrsNhMb01nszlMohlKO0w2VfBcokwouI2QR_WOL8dRl8ZnS9OLJJLdpQOnpH9LFU9e9lBW7Zd-DgfA";
-        function urlBase64ToUint8Array(base64String) {
-          const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
-          const base64 = (base64String + padding)
-            .replace(/-/g, "+")
-            .replace(/_/g, "/");
-          const rawData = window.atob(base64);
-          const outputArray = new Uint8Array(rawData.length);
-          for (let i = 0; i < rawData.length; ++i) {
-            outputArray[i] = rawData.charCodeAt(i);
-          }
-          return outputArray;
-        }
-        async function subscribeUser() {
-          try {
-            const registration = await navigator.serviceWorker.ready;
-            const subscription = await registration.pushManager.subscribe({
-              userVisibleOnly: true,
-              applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
-            });
-            await fetch("/api/save-subscription", {
-              method: "POST",
-              body: JSON.stringify(subscription),
-              headers: { "Content-Type": "application/json" },
-            });
-            alert("Push-Benachrichtigungen erfolgreich aktiviert!");
-          } catch (error) {
-            console.error("Fehler beim Abonnieren:", error);
-            alert(
-              "Fehler: Push-Benachrichtigungen konnten nicht aktiviert werden."
-            );
-          }
-        }
-
+        // Push Notification Logic
         if ("serviceWorker" in navigator && "PushManager" in window) {
+          const VAPID_PUBLIC_KEY =
+            "BBNrKK7tabrsNhMb01nszlMohlKO0w2VfBcokwouI2QR_WOL8dRl8ZnS9OLJJLdpQOnpH9LFU9e9lBW7Zd-DgfA";
+          function urlBase64ToUint8Array(base64String) {
+            const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+            const base64 = (base64String + padding)
+              .replace(/-/g, "+")
+              .replace(/_/g, "/");
+            const rawData = window.atob(base64);
+            const outputArray = new Uint8Array(rawData.length);
+            for (let i = 0; i < rawData.length; ++i) {
+              outputArray[i] = rawData.charCodeAt(i);
+            }
+            return outputArray;
+          }
+          async function subscribeUser() {
+            try {
+              const registration = await navigator.serviceWorker.ready;
+              const subscription = await registration.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+              });
+              await fetch("/api/save-subscription", {
+                method: "POST",
+                body: JSON.stringify(subscription),
+                headers: { "Content-Type": "application/json" },
+              });
+              alert("Push-Benachrichtigungen erfolgreich aktiviert!");
+            } catch (error) {
+              console.error("Fehler beim Abonnieren:", error);
+              alert(
+                "Fehler: Push-Benachrichtigungen konnten nicht aktiviert werden."
+              );
+            }
+          }
+
           navigator.serviceWorker
             .register("/sw.js")
             .then((registration) => {

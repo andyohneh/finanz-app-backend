@@ -157,96 +157,125 @@
   </head>
   <body>
     <div class="header-container">
-      <h1>Analyse-Dashboard</h1>
+      <h1>Analyse-Dashboard: Performance</h1>
       <div class="theme-switch-wrapper">
-        <label class="theme-switch" for="checkbox">
-          <input type="checkbox" id="checkbox" />
-          <div class="slider round"></div>
-        </label>
+        <label class="theme-switch" for="checkbox"
+          ><input type="checkbox" id="checkbox" />
+          <div class="slider round"></div
+        ></label>
       </div>
     </div>
 
-    <h2>📈 Long-Strategie ("Aufwind")</h2>
+    {% for result in results %}
+    <h2>🏆 Strategie-Performance für: {{ result.Symbol }}</h2>
     <div class="container">
       <table>
         <thead>
           <tr>
-            <th>Symbol</th>
-            <th>Gesamtrendite (%)</th>
-            <th>Gewinnrate (%)</th>
+            <th>Gesamtrendite</th>
+            <th>Gewinnrate</th>
             <th>Sharpe Ratio</th>
             <th>Anzahl Trades</th>
           </tr>
         </thead>
         <tbody>
-          {% for result in results.long %}
           <tr>
-            <td><strong>{{ result.Symbol }}</strong></td>
             <td>+{{ result['Gesamtrendite_%'] }}%</td>
             <td>{{ result['Gewinnrate_%'] }}%</td>
             <td>{{ result.Sharpe_Ratio }}</td>
             <td>{{ result.Anzahl_Trades }}</td>
           </tr>
-          {% else %}
-          <tr>
-            <td colspan="5" style="text-align: center">
-              Keine Long-Strategie-Daten gefunden.
-            </td>
-          </tr>
-          {% endfor %}
         </tbody>
       </table>
     </div>
 
-    <h2>📉 Short-Strategie ("Gegenwind")</h2>
-    <div class="container">
-      <table>
-        <thead>
-          <tr>
-            <th>Symbol</th>
-            <th>Gesamtrendite (%)</th>
-            <th>Gewinnrate (%)</th>
-            <th>Sharpe Ratio</th>
-            <th>Anzahl Trades</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for result in results.short %}
-          <tr>
-            <td><strong>{{ result.Symbol }}</strong></td>
-            <td>{{ result['Gesamtrendite_%'] }}%</td>
-            <td>{{ result['Gewinnrate_%'] }}%</td>
-            <td>{{ result.Sharpe_Ratio }}</td>
-            <td>{{ result.Anzahl_Trades }}</td>
-          </tr>
-          {% else %}
-          <tr>
-            <td colspan="5" style="text-align: center">
-              Keine Short-Strategie-Daten gefunden.
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+    <div
+      id="chart-container-{{ result.Symbol.replace('/', '') }}"
+      class="container"
+      style="height: 50vh"
+    >
+      <canvas id="equity-chart-{{ result.Symbol.replace('/', '') }}"></canvas>
     </div>
+    {% else %}
+    <div class="container">
+      <p class="loading-text" style="color: red">
+        Keine Backtest-Daten gefunden. Bitte führe den 'backtester_daily.py' aus
+        und stelle sicher, dass die 'backtest_results_daily.json' Datei
+        vorhanden ist.
+      </p>
+    </div>
+    {% endfor %}
 
     <a href="/" class="back-link">Zurück zu den Live-Signalen</a>
 
     <script>
-      const themeSwitch = document.getElementById("checkbox");
-      const currentTheme = localStorage.getItem("theme");
-      if (currentTheme) {
-        document.body.classList.add(currentTheme);
-        if (currentTheme === "dark-mode") {
-          themeSwitch.checked = true;
-        }
-      }
-      themeSwitch.addEventListener("change", function (event) {
-        document.body.classList.toggle("dark-mode", event.target.checked);
-        localStorage.setItem(
-          "theme",
-          event.target.checked ? "dark-mode" : "light-mode"
-        );
+      // JavaScript für Dark Mode und das Zeichnen der Equity-Kurven
+      document.addEventListener('DOMContentLoaded', function() {
+          const resultsData = {{ results | tojson }};
+
+          function drawChart(containerId, chartData, label) {
+              const ctx = document.getElementById(containerId);
+              if (!ctx) return;
+              const labels = chartData.map(item => item.timestamp);
+              const data = chartData.map(item => item.equity);
+
+              const isDarkMode = document.body.classList.contains('dark-mode');
+
+              new Chart(ctx.getContext('2d'), {
+                  type: 'line',
+                  data: {
+                      labels: labels,
+                      datasets: [{
+                          label: label,
+                          data: data,
+                          borderColor: isDarkMode ? '#63b3ed' : '#2c5282',
+                          backgroundColor: isDarkMode ? 'rgba(99, 179, 237, 0.1)' : 'rgba(44, 82, 130, 0.1)',
+                          fill: true,
+                          tension: 0.1,
+                          borderWidth: 2,
+                          pointRadius: 0,
+                      }]
+                  },
+                  options: {
+                      responsive: true,
+                      maintainAspectRatio: false,
+                      scales: {
+                          y: {
+                              ticks: { callback: value => `$${value.toFixed(2)}`, color: isDarkMode ? '#e2e8f0' : '#3d4852' },
+                              grid: { color: isDarkMode ? '#4a5568' : '#e2e8f0' }
+                          },
+                          x: {
+                              ticks: { color: isDarkMode ? '#e2e8f0' : '#3d4852' },
+                              grid: { display: false }
+                          }
+                      },
+                      plugins: {
+                          legend: {
+                              labels: { color: isDarkMode ? '#e2e8f0' : '#3d4852' }
+                          }
+                      }
+                  }
+              });
+          }
+
+          if (resultsData && resultsData.length > 0) {
+              resultsData.forEach(result => {
+                  const symbolId = result.Symbol.replace('/', '');
+                  drawChart(`equity-chart-${symbolId}`, result.equity_curve, `Kapitalverlauf für ${result.Symbol}`);
+              });
+          }
+
+          const themeSwitch = document.getElementById('checkbox');
+          const currentTheme = localStorage.getItem('theme');
+          if (currentTheme) {
+              document.body.classList.add(currentTheme);
+              if (currentTheme === 'dark-mode') { themeSwitch.checked = true; }
+          }
+          themeSwitch.addEventListener('change', function(event) {
+              // Einfachste Methode, um Chart-Farben zu aktualisieren: Seite neu laden
+              localStorage.setItem('theme', event.target.checked ? 'dark-mode' : 'light-mode');
+              window.location.reload();
+          });
       });
     </script>
   </body>
