@@ -10,7 +10,7 @@ from database import engine, push_subscriptions, historical_data_daily
 
 # --- GRUNDEINSTELLUNGEN ---
 load_dotenv()
-app = Flask(__name__, template_folder='templates', static_folder='static')
+app = Flask(__name__, template_folder='templates', static_folder='static') 
 CORS(app)
 
 # --- ROUTEN ---
@@ -24,27 +24,27 @@ def index():
 def dashboard():
     """Liest die Backtest-Ergebnisse der finalen Long- und Short-Tagesstrategien."""
     results = {'long': [], 'short': []}
-
+    
     # Lade Ergebnisse der Long-Strategie
     try:
-        with open('backtest_results_daily.json', 'r', encoding='utf-8') as f:
+        # WICHTIG: Stellt sicher, dass diese Datei von backtester_daily.py erstellt wurde
+        with open('backtest_results_daily_long.json', 'r', encoding='utf-8') as f:
             results['long'] = json.load(f)
-        print("Erfolgreich 'backtest_results_daily.json' geladen.")
     except FileNotFoundError:
-        print("Warnung: backtest_results_daily.json nicht gefunden.")
+        print("Warnung: backtest_results_daily_long.json nicht gefunden.")
     except Exception as e:
-        print(f"Fehler beim Laden von backtest_results_daily.json: {e}")
-
+        print(f"Fehler beim Laden von daily_long.json: {e}")
+    
     # Lade Ergebnisse der Short-Strategie
     try:
+        # WICHTIG: Stellt sicher, dass diese Datei von backtester_short.py erstellt wurde
         with open('backtest_results_daily_short.json', 'r', encoding='utf-8') as f:
             results['short'] = json.load(f)
-        print("Erfolgreich 'backtest_results_daily_short.json' geladen.")
     except FileNotFoundError:
         print("Warnung: backtest_results_daily_short.json nicht gefunden.")
     except Exception as e:
-        print(f"Fehler beim Laden von backtest_results_daily_short.json: {e}")
-
+        print(f"Fehler beim Laden von daily_short.json: {e}")
+    
     return render_template('dashboard.html', results=results)
 
 # PWA-Routen
@@ -91,13 +91,13 @@ def get_assets():
                     color, icon = "green", "arrow-up"
                 elif prediction.get('signal') == "Verkaufen":
                     color, icon = "red", "arrow-down"
-                assets_data.append({
-                    "asset": prediction['symbol'].replace('/', ''),
-                    "entry": f"{prediction.get('entry_price'):.2f}" if prediction.get('entry_price') else "N/A",
-                    "takeProfit": f"{prediction.get('take_profit'):.2f}" if prediction.get('take_profit') else "N/A",
-                    "stopLoss": f"{prediction.get('stop_loss'):.2f}" if prediction.get('stop_loss') else "N/A",
-                    "signal": prediction.get('signal'),
-                    "color": color,
+                assets_data.append({ 
+                    "asset": prediction['symbol'].replace('/', ''), 
+                    "entry": f"{prediction.get('entry_price'):.2f}" if prediction.get('entry_price') else "N/A", 
+                    "takeProfit": f"{prediction.get('take_profit'):.2f}" if prediction.get('take_profit') else "N/A", 
+                    "stopLoss": f"{prediction.get('stop_loss'):.2f}" if prediction.get('stop_loss') else "N/A", 
+                    "signal": prediction.get('signal'), 
+                    "color": color, 
                     "icon": icon,
                     "timestamp": prediction['last_updated'].strftime('%Y-%m-%d %H:%M:%S')
                 })

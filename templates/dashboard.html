@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Analyse-Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
       :root {
         --bg-color: #f4f7f9;
@@ -14,7 +15,6 @@
         --hover-color: #f7fafc;
         --switch-bg-color: #ccc;
         --green-positive: #2f855a;
-        --red-negative: #c53030;
       }
       body.dark-mode {
         --bg-color: #1a202c;
@@ -25,7 +25,6 @@
         --hover-color: #4a5568;
         --switch-bg-color: #718096;
         --green-positive: #68d391;
-        --red-negative: #fc8181;
       }
       * {
         box-sizing: border-box;
@@ -156,96 +155,130 @@
   </head>
   <body>
     <div class="header-container">
-      <h1>Analyse-Dashboard: "Allwetter"-Strategie</h1>
+      <h1>Analyse-Dashboard</h1>
       <div class="theme-switch-wrapper">
-        <label class="theme-switch" for="checkbox">
-          <input type="checkbox" id="checkbox" />
-          <div class="slider round"></div>
-        </label>
+        <label class="theme-switch" for="checkbox"
+          ><input type="checkbox" id="checkbox" />
+          <div class="slider round"></div
+        ></label>
       </div>
     </div>
 
-    <h2>📈 Long-Strategie ("Aufwind")</h2>
+    <h2>🏆 Champion-Strategie: Daily Swing Trading</h2>
+
+    {% for result in results %}
     <div class="container">
+      <h3>Performance für: {{ result.Symbol }}</h3>
       <table>
         <thead>
           <tr>
-            <th>Symbol</th>
-            <th>Gesamtrendite (%)</th>
-            <th>Gewinnrate (%)</th>
+            <th>Gesamtrendite</th>
+            <th>Gewinnrate</th>
             <th>Sharpe Ratio</th>
             <th>Anzahl Trades</th>
           </tr>
         </thead>
         <tbody>
-          {% for result in results.long %}
           <tr>
-            <td><strong>{{ result.Symbol }}</strong></td>
             <td>+{{ result['Gesamtrendite_%'] }}%</td>
             <td>{{ result['Gewinnrate_%'] }}%</td>
             <td>{{ result.Sharpe_Ratio }}</td>
             <td>{{ result.Anzahl_Trades }}</td>
           </tr>
-          {% else %}
-          <tr>
-            <td colspan="5" style="text-align: center">
-              Keine Long-Strategie-Daten gefunden.
-            </td>
-          </tr>
-          {% endfor %}
         </tbody>
       </table>
     </div>
 
-    <h2>📉 Short-Strategie ("Gegenwind")</h2>
-    <div class="container">
-      <table>
-        <thead>
-          <tr>
-            <th>Symbol</th>
-            <th>Gesamtrendite (%)</th>
-            <th>Gewinnrate (%)</th>
-            <th>Sharpe Ratio</th>
-            <th>Anzahl Trades</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for result in results.short %}
-          <tr>
-            <td><strong>{{ result.Symbol }}</strong></td>
-            <td>{{ result['Gesamtrendite_%'] }}%</td>
-            <td>{{ result['Gewinnrate_%'] }}%</td>
-            <td>{{ result.Sharpe_Ratio }}</td>
-            <td>{{ result.Anzahl_Trades }}</td>
-          </tr>
-          {% else %}
-          <tr>
-            <td colspan="5" style="text-align: center">
-              Keine Short-Strategie-Daten gefunden.
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+    <div
+      id="chart-container-{{ result.Symbol.replace('/', '') }}"
+      class="container"
+      style="height: 50vh"
+    >
+      <canvas id="equity-chart-{{ result.Symbol.replace('/', '') }}"></canvas>
     </div>
+    {% else %}
+    <div class="container">
+      <p class="loading-text" style="color: red">
+        Keine Backtest-Daten gefunden. Bitte führe den 'backtester_daily.py' aus
+        und stelle sicher, dass die 'backtest_results_daily.json' Datei auf dem
+        Server vorhanden ist.
+      </p>
+    </div>
+    {% endfor %}
 
     <a href="/" class="back-link">Zurück zu den Live-Signalen</a>
 
     <script>
-      const themeSwitch = document.getElementById("checkbox");
-      const currentTheme = localStorage.getItem("theme");
-      if (currentTheme) {
-        document.body.classList.add(currentTheme);
-        if (currentTheme === "dark-mode") {
-          themeSwitch.checked = true;
-        }
-      }
-      themeSwitch.addEventListener("change", function (event) {
-        document.body.classList.toggle("dark-mode", event.target.checked);
-        localStorage.setItem(
-          "theme",
-          event.target.checked ? "dark-mode" : "light-mode"
-        );
+      document.addEventListener('DOMContentLoaded', function() {
+          const resultsData = {{ results | tojson }};
+          const isDarkMode = document.body.classList.contains('dark-mode');
+
+          function drawChart(containerId, chartData, label) {
+              const ctx = document.getElementById(containerId);
+              if (!ctx) return;
+
+              const canvasCtx = ctx.getContext('2d');
+              const labels = chartData.map(item => item.timestamp);
+              const data = chartData.map(item => item.equity);
+
+              new Chart(canvasCtx, {
+                  type: 'line',
+                  data: {
+                      labels: labels,
+                      datasets: [{
+                          label: label,
+                          data: data,
+                          borderColor: isDarkMode ? '#68d391' : '#2f855a',
+                          backgroundColor: isDarkMode ? 'rgba(104, 211, 145, 0.1)' : 'rgba(47, 133, 90, 0.1)',
+                          fill: true,
+                          tension: 0.1,
+                          borderWidth: 2,
+                          pointRadius: 0
+                      }]
+                  },
+                  options: {
+                      responsive: true,
+                      maintainAspectRatio: false,
+                      scales: {
+                          y: {
+                              ticks: { callback: value => `$${value.toFixed(2)}`, color: isDarkMode ? '#e2e8f0' : '#3d4852' },
+                              grid: { color: isDarkMode ? '#4a5568' : '#e2e8f0' }
+                          },
+                          x: {
+                              ticks: { color: isDarkMode ? '#e2e8f0' : '#3d4852' },
+                              grid: { display: false }
+                          }
+                      },
+                      plugins: {
+                          legend: {
+                              labels: { color: isDarkMode ? '#e2e8f0' : '#3d4852' }
+                          }
+                      }
+                  }
+              });
+          }
+
+          // Initialisiere die Charts, wenn Daten vorhanden sind
+          if (resultsData && resultsData.length > 0) {
+              resultsData.forEach(result => {
+                  const symbolId = result.Symbol.replace('/', '');
+                  if (result.equity_curve) {
+                      drawChart(`equity-chart-${symbolId}`, result.equity_curve, `Kapitalverlauf für ${result.Symbol}`);
+                  }
+              });
+          }
+
+          // Dark Mode Logik
+          const themeSwitch = document.getElementById('checkbox');
+          const currentTheme = localStorage.getItem('theme');
+          if (currentTheme) {
+              document.body.classList.add(currentTheme);
+              if (currentTheme === 'dark-mode') { themeSwitch.checked = true; }
+          }
+          themeSwitch.addEventListener('change', function(event) {
+              localStorage.setItem('theme', event.target.checked ? 'dark-mode' : 'light-mode');
+              window.location.reload();
+          });
       });
     </script>
   </body>
