@@ -1,11 +1,11 @@
-# app.py (Finale Version mit korrekter Chart-Datenquelle)
+# app.py (Finale "Allwetter"-Version, perfektioniert)
 import os
 import json
 from flask import Flask, jsonify, render_template, send_from_directory, request
 from flask_cors import CORS
 from dotenv import load_dotenv
 from sqlalchemy import text
-# Wichtig: Wir importieren die korrekten Tabellen
+from sqlalchemy.dialects.postgresql import insert
 from database import engine, push_subscriptions, historical_data_daily
 
 # --- GRUNDEINSTELLUNGEN ---
@@ -22,15 +22,29 @@ def index():
 
 @app.route('/dashboard')
 def dashboard():
-    """Liest die Backtest-Ergebnisse der finalen Tages-Strategie."""
-    results = []
+    """Liest die Backtest-Ergebnisse der finalen Long- und Short-Tagesstrategien."""
+    results = {'long': [], 'short': []}
+
+    # Lade Ergebnisse der Long-Strategie
     try:
         with open('backtest_results_daily.json', 'r', encoding='utf-8') as f:
-            results = json.load(f)
+            results['long'] = json.load(f)
         print("Erfolgreich 'backtest_results_daily.json' geladen.")
+    except FileNotFoundError:
+        print("Warnung: backtest_results_daily.json nicht gefunden.")
     except Exception as e:
-        print(f"Warnung: backtest_results_daily.json nicht gefunden: {e}")
-    
+        print(f"Fehler beim Laden von backtest_results_daily.json: {e}")
+
+    # Lade Ergebnisse der Short-Strategie
+    try:
+        with open('backtest_results_daily_short.json', 'r', encoding='utf-8') as f:
+            results['short'] = json.load(f)
+        print("Erfolgreich 'backtest_results_daily_short.json' geladen.")
+    except FileNotFoundError:
+        print("Warnung: backtest_results_daily_short.json nicht gefunden.")
+    except Exception as e:
+        print(f"Fehler beim Laden von backtest_results_daily_short.json: {e}")
+
     return render_template('dashboard.html', results=results)
 
 # PWA-Routen
@@ -96,12 +110,7 @@ def get_assets():
 def get_historical_data(symbol):
     """Holt die historischen TAGES-Daten für die Charts."""
     db_symbol = f"{symbol[:-3]}/{symbol[-3:]}"
-    
-    # === HIER IST DIE KORREKTUR ===
-    # Wir lesen jetzt aus der `historical_data_daily` Tabelle, die live aktualisiert wird,
-    # und zeigen die letzten 30 Tage an.
     query = text("SELECT timestamp, close FROM historical_data_daily WHERE symbol = :symbol_param ORDER BY timestamp DESC LIMIT 30")
-    
     try:
         with engine.connect() as conn:
             result = conn.execute(query, {"symbol_param": db_symbol}).fetchall()

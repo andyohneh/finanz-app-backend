@@ -1,168 +1,252 @@
 <!DOCTYPE html>
 <html lang="de">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Analyse-Dashboard</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
       :root {
-        --bg-color: #f4f7f9; --card-bg-color: #ffffff; --text-color: #3d4852;
-        --header-color: #2c5282; --border-color: #e2e8f0; --hover-color: #f7fafc;
-        --switch-bg-color: #ccc; --green-positive: #2f855a; --red-negative: #c53030;
+        --bg-color: #f4f7f9;
+        --card-bg-color: #ffffff;
+        --text-color: #3d4852;
+        --header-color: #2c5282;
+        --border-color: #e2e8f0;
+        --hover-color: #f7fafc;
+        --switch-bg-color: #ccc;
+        --green-positive: #2f855a;
+        --red-negative: #c53030;
       }
       body.dark-mode {
-        --bg-color: #1a202c; --card-bg-color: #2d3748; --text-color: #e2e8f0;
-        --header-color: #63b3ed; --border-color: #4a5568; --hover-color: #4a5568;
-        --switch-bg-color: #718096; --green-positive: #68d391; --red-negative: #fc8181;
+        --bg-color: #1a202c;
+        --card-bg-color: #2d3748;
+        --text-color: #e2e8f0;
+        --header-color: #63b3ed;
+        --border-color: #4a5568;
+        --hover-color: #4a5568;
+        --switch-bg-color: #718096;
+        --green-positive: #68d391;
+        --red-negative: #fc8181;
       }
-      * { box-sizing: border-box; }
+      * {
+        box-sizing: border-box;
+      }
       body {
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-        background-color: var(--bg-color); color: var(--text-color);
-        margin: 0; padding: 2rem; display: flex; align-items: center; flex-direction: column;
-        min-height: 100vh; transition: background-color 0.3s, color 0.3s;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          Helvetica, Arial, sans-serif;
+        background-color: var(--bg-color);
+        color: var(--text-color);
+        margin: 0;
+        padding: 2rem;
+        display: flex;
+        align-items: center;
+        flex-direction: column;
+        min-height: 100vh;
+        transition: background-color 0.3s, color 0.3s;
       }
-      .header-container { display: flex; justify-content: center; align-items: center; width: 100%; max-width: 1000px; position: relative; margin-bottom: 1rem; }
-      h1, h2 { color: var(--header-color); text-align: center; }
-      h1 { font-size: 2.5rem; margin: 0 auto; }
-      h2 { border-bottom: 2px solid var(--border-color); padding-bottom: 10px; margin-top: 40px; width: 100%; max-width: 1000px;}
-      .container { background-color: var(--card-bg-color); transition: background-color 0.3s; width: 100%; max-width: 1000px; padding: 2rem; border-radius: 12px; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); margin-bottom: 2rem; border: 1px solid var(--border-color); overflow-x: auto;}
-      table { width: 100%; border-collapse: collapse; }
-      th, td { padding: 1rem; border-bottom: 1px solid var(--border-color); text-align: left; }
-      th { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-color); background-color: var(--bg-color); }
-      tr:nth-child(even) { background-color: var(--bg-color); }
-      .back-link { display: block; text-align: center; margin-top: 40px; color: var(--header-color); text-decoration: none; font-weight: bold; font-size: 1.1em; }
-      .theme-switch-wrapper { display: flex; align-items: center; margin-left: auto; }
-      .theme-switch { display: inline-block; height: 34px; position: relative; width: 60px; }
-      .theme-switch input { display: none; }
-      .slider { background-color: var(--switch-bg-color); bottom: 0; cursor: pointer; left: 0; right: 0; top: 0; position: absolute; transition: .4s; border-radius: 34px; }
-      .slider:before { background-color: #fff; bottom: 4px; content: ""; height: 26px; left: 4px; position: absolute; transition: .4s; width: 26px; border-radius: 50%; }
-      input:checked + .slider { background-color: #4c51bf; }
-      input:checked + .slider:before { transform: translateX(26px); }
+      .header-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        width: 100%;
+        max-width: 1000px;
+        position: relative;
+        margin-bottom: 1rem;
+      }
+      h1,
+      h2 {
+        color: var(--header-color);
+        text-align: center;
+      }
+      h1 {
+        font-size: 2.5rem;
+        margin: 0 auto;
+      }
+      h2 {
+        border-bottom: 2px solid var(--border-color);
+        padding-bottom: 10px;
+        margin-top: 40px;
+        width: 100%;
+        max-width: 1000px;
+      }
+      .container {
+        background-color: var(--card-bg-color);
+        transition: background-color 0.3s;
+        width: 100%;
+        max-width: 1000px;
+        padding: 2rem;
+        border-radius: 12px;
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1),
+          0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        margin-bottom: 2rem;
+        border: 1px solid var(--border-color);
+        overflow-x: auto;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th,
+      td {
+        padding: 1rem;
+        border-bottom: 1px solid var(--border-color);
+        text-align: left;
+      }
+      th {
+        font-size: 0.85rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--text-color);
+        background-color: var(--bg-color);
+      }
+      tr:nth-child(even) {
+        background-color: var(--bg-color);
+      }
+      .back-link {
+        display: block;
+        text-align: center;
+        margin-top: 40px;
+        color: var(--header-color);
+        text-decoration: none;
+        font-weight: bold;
+        font-size: 1.1em;
+      }
+      .theme-switch-wrapper {
+        display: flex;
+        align-items: center;
+        margin-left: auto;
+      }
+      .theme-switch {
+        display: inline-block;
+        height: 34px;
+        position: relative;
+        width: 60px;
+      }
+      .theme-switch input {
+        display: none;
+      }
+      .slider {
+        background-color: var(--switch-bg-color);
+        bottom: 0;
+        cursor: pointer;
+        left: 0;
+        right: 0;
+        top: 0;
+        position: absolute;
+        transition: 0.4s;
+        border-radius: 34px;
+      }
+      .slider:before {
+        background-color: #fff;
+        bottom: 4px;
+        content: "";
+        height: 26px;
+        left: 4px;
+        position: absolute;
+        transition: 0.4s;
+        width: 26px;
+        border-radius: 50%;
+      }
+      input:checked + .slider {
+        background-color: #4c51bf;
+      }
+      input:checked + .slider:before {
+        transform: translateX(26px);
+      }
     </style>
-</head>
-<body>
-
+  </head>
+  <body>
     <div class="header-container">
-        <h1>Analyse-Dashboard: Allwetter-Strategie</h1>
-        <div class="theme-switch-wrapper">
-            <label class="theme-switch" for="checkbox">
-                <input type="checkbox" id="checkbox" />
-                <div class="slider round"></div>
-            </label>
-        </div>
+      <h1>Analyse-Dashboard: "Allwetter"-Strategie</h1>
+      <div class="theme-switch-wrapper">
+        <label class="theme-switch" for="checkbox">
+          <input type="checkbox" id="checkbox" />
+          <div class="slider round"></div>
+        </label>
+      </div>
     </div>
 
     <h2>📈 Long-Strategie ("Aufwind")</h2>
-    {% for result in results.long %}
     <div class="container">
-        <table>
-            <thead><tr><th>Symbol</th><th>Gesamtrendite (%)</th><th>Gewinnrate (%)</th><th>Sharpe Ratio</th><th>Anzahl Trades</th></tr></thead>
-            <tbody>
-                <tr>
-                    <td><strong>{{ result.Symbol }}</strong></td>
-                    <td>+{{ result['Gesamtrendite_%'] }}%</td>
-                    <td>{{ result['Gewinnrate_%'] }}%</td>
-                    <td>{{ result.Sharpe_Ratio }}</td>
-                    <td>{{ result.Anzahl_Trades }}</td>
-                </tr>
-            </tbody>
-        </table>
+      <table>
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th>Gesamtrendite (%)</th>
+            <th>Gewinnrate (%)</th>
+            <th>Sharpe Ratio</th>
+            <th>Anzahl Trades</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for result in results.long %}
+          <tr>
+            <td><strong>{{ result.Symbol }}</strong></td>
+            <td>+{{ result['Gesamtrendite_%'] }}%</td>
+            <td>{{ result['Gewinnrate_%'] }}%</td>
+            <td>{{ result.Sharpe_Ratio }}</td>
+            <td>{{ result.Anzahl_Trades }}</td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="5" style="text-align: center">
+              Keine Long-Strategie-Daten gefunden.
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
-    <div id="chart-container-long-{{ result.Symbol.replace('/', '') }}" class="container" style="height: 50vh;">
-        <canvas id="equity-chart-long-{{ result.Symbol.replace('/', '') }}"></canvas>
-    </div>
-    {% else %}
-    <div class="container"><p style="text-align:center;">Keine Long-Strategie-Daten gefunden.</p></div>
-    {% endfor %}
 
     <h2>📉 Short-Strategie ("Gegenwind")</h2>
-    {% for result in results.short %}
     <div class="container">
-        <table>
-            <thead><tr><th>Symbol</th><th>Gesamtrendite (%)</th><th>Gewinnrate (%)</th><th>Sharpe Ratio</th><th>Anzahl Trades</th></tr></thead>
-            <tbody>
-                <tr>
-                    <td><strong>{{ result.Symbol }}</strong></td>
-                    <td>{{ result['Gesamtrendite_%'] }}%</td>
-                    <td>{{ result['Gewinnrate_%'] }}%</td>
-                    <td>{{ result.Sharpe_Ratio }}</td>
-                    <td>{{ result.Anzahl_Trades }}</td>
-                </tr>
-            </tbody>
-        </table>
+      <table>
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th>Gesamtrendite (%)</th>
+            <th>Gewinnrate (%)</th>
+            <th>Sharpe Ratio</th>
+            <th>Anzahl Trades</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for result in results.short %}
+          <tr>
+            <td><strong>{{ result.Symbol }}</strong></td>
+            <td>{{ result['Gesamtrendite_%'] }}%</td>
+            <td>{{ result['Gewinnrate_%'] }}%</td>
+            <td>{{ result.Sharpe_Ratio }}</td>
+            <td>{{ result.Anzahl_Trades }}</td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="5" style="text-align: center">
+              Keine Short-Strategie-Daten gefunden.
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
-    <div id="chart-container-short-{{ result.Symbol.replace('/', '') }}" class="container" style="height: 50vh;">
-        <canvas id="equity-chart-short-{{ result.Symbol.replace('/', '') }}"></canvas>
-    </div>
-    {% else %}
-    <div class="container"><p style="text-align:center;">Keine Short-Strategie-Daten gefunden.</p></div>
-    {% endfor %}
-    
+
     <a href="/" class="back-link">Zurück zu den Live-Signalen</a>
 
     <script>
-      document.addEventListener('DOMContentLoaded', function() {
-          const resultsData = {{ results | tojson }};
-          const isDarkMode = document.body.classList.contains('dark-mode');
-          
-          function drawChart(containerId, chartData, label, color, bgColor) {
-              const ctx = document.getElementById(containerId);
-              if (!ctx) return;
-              const labels = chartData.map(item => item.timestamp);
-              const data = chartData.map(item => item.equity);
-              
-              new Chart(ctx.getContext('2d'), {
-                  type: 'line',
-                  data: {
-                      labels: labels,
-                      datasets: [{
-                          label: label, data: data, borderColor: color,
-                          backgroundColor: bgColor, fill: true, tension: 0.1,
-                          borderWidth: 2, pointRadius: 0
-                      }]
-                  },
-                  options: {
-                      responsive: true, maintainAspectRatio: false,
-                      scales: { 
-                          y: { ticks: { callback: value => `$${value.toFixed(2)}`, color: isDarkMode ? '#e2e8f0' : '#3d4852' }, grid: { color: isDarkMode ? '#4a5568' : '#e2e8f0' } },
-                          x: { ticks: { color: isDarkMode ? '#e2e8f0' : '#3d4852' }, grid: { display: false } }
-                      },
-                      plugins: { legend: { labels: { color: isDarkMode ? '#e2e8f0' : '#3d4852' } } }
-                  }
-              });
-          }
-
-          if (resultsData.long && resultsData.long.length > 0) {
-              resultsData.long.forEach(result => {
-                  if (result.equity_curve) {
-                    const symbolId = result.Symbol.replace('/', '');
-                    drawChart(`equity-chart-long-${symbolId}`, result.equity_curve, `Kapitalverlauf Long ${result.Symbol}`, isDarkMode ? '#68d391' : '#2f855a', isDarkMode ? 'rgba(104, 211, 145, 0.1)' : 'rgba(47, 133, 90, 0.1)');
-                  }
-              });
-          }
-
-          if (resultsData.short && resultsData.short.length > 0) {
-              resultsData.short.forEach(result => {
-                 if (result.equity_curve) {
-                    const symbolId = result.Symbol.replace('/', '');
-                    drawChart(`equity-chart-short-${symbolId}`, result.equity_curve, `Kapitalverlauf Short ${result.Symbol}`, isDarkMode ? '#fc8181' : '#c53030', isDarkMode ? 'rgba(252, 129, 129, 0.1)' : 'rgba(197, 48, 48, 0.1)');
-                 }
-              });
-          }
-          
-          const themeSwitch = document.getElementById('checkbox');
-          const currentTheme = localStorage.getItem('theme');
-          if (currentTheme) {
-              document.body.classList.add(currentTheme);
-              if (currentTheme === 'dark-mode') { themeSwitch.checked = true; }
-          }
-          themeSwitch.addEventListener('change', function(event) {
-              localStorage.setItem('theme', event.target.checked ? 'dark-mode' : 'light-mode');
-              window.location.reload(); 
-          });
+      const themeSwitch = document.getElementById("checkbox");
+      const currentTheme = localStorage.getItem("theme");
+      if (currentTheme) {
+        document.body.classList.add(currentTheme);
+        if (currentTheme === "dark-mode") {
+          themeSwitch.checked = true;
+        }
+      }
+      themeSwitch.addEventListener("change", function (event) {
+        document.body.classList.toggle("dark-mode", event.target.checked);
+        localStorage.setItem(
+          "theme",
+          event.target.checked ? "dark-mode" : "light-mode"
+        );
       });
     </script>
-</body>
+  </body>
 </html>
