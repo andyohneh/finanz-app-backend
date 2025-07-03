@@ -1,149 +1,161 @@
-# ki_trainer_daily.py (LEGENDARY-STANDARD 2.1 - Finale Version)
 import pandas as pd
 import numpy as np
 import ta
 import joblib
-import os
-from sqlalchemy import text
-from database import engine, historical_data_daily
-from sklearn.model_selection import train_test_split, RandomizedSearchCV
+from sqlalchemy import create_engine, text
+from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
-from xgboost import XGBClassifier
-from lightgbm import LGBMClassifier
 from sklearn.metrics import classification_report
-from scipy.stats import randint
+import os
+from dotenv import load_dotenv
 
-# --- KONFIGURATION ---
-MODEL_DIR = "models"
-SYMBOLS = ['BTC/USD', 'XAU/USD']
+# --- KONFIGURATION & DATENBANK ---
+load_dotenv()
+DATABASE_URL = os.getenv('DATABASE_URL')
+if not DATABASE_URL:
+    raise ValueError("Keine DATABASE_URL in der .env-Datei gefunden!")
+engine = create_engine(DATABASE_URL)
 
-def load_data_from_db(symbol: str):
-    """Lädt ALLE TAGES-Daten für ein Symbol aus der Datenbank."""
-    print(f"Lade alle Tages-Daten für {symbol} aus der Datenbank...")
+MODEL_PATH_BTC = 'models/model_daily_BTCUSD.pkl'
+MODEL_PATH_XAU = 'models/model_daily_XAUUSD.pkl'
+
+# --- DATENLADEN & FEATURE ENGINEERING ---
+
+def load_data_from_db(symbol: str) -> pd.DataFrame:
+    """
+    Lädt historische Preisdaten UND die dazugehörigen Sentiment-Scores 
+    aus der Datenbank.
+    """
+    print(f"Lade Preis- und Sentiment-Daten für {symbol} aus der Datenbank...")
     try:
         with engine.connect() as conn:
-            query = text("SELECT * FROM historical_data_daily WHERE symbol = :symbol ORDER BY timestamp ASC")
-            df = pd.read_sql_query(query, conn, params={'symbol': symbol})
-            print(f"Erfolgreich {len(df)} Tages-Datenpunkte geladen.")
+            # Wir nutzen ein LEFT JOIN, um Preisdaten mit Sentiment-Scores zu verbinden.
+            # DATE(h.timestamp) stellt sicher, dass wir nur nach dem Datum abgleichen.
+            query = text("""
+                SELECT
+                    h.timestamp, h.open, h.high, h.low, h.close, h.volume,
+                    s.sentiment_score
+                FROM historical_data_daily h
+                LEFT JOIN daily_sentiment s ON h.symbol = s.asset AND DATE(h.timestamp) = DATE(s.date)
+                WHERE h.symbol = :symbol
+                ORDER BY h.timestamp ASC
+            """)
+            df = pd.read_sql(query, conn, params={'symbol': symbol})
+            
+            # Fehlende Sentiment-Werte (für Tage ohne Nachrichten) mit neutralem Wert 0.0 füllen.
+            df['sentiment_score'].fillna(0.0, inplace=True)
+            
+            print(f"Erfolgreich {len(df)} Datenpunkte mit Sentiment-Scores geladen.")
             return df
     except Exception as e:
-        print(f"Ein Fehler beim Laden der Daten ist aufgetreten: {e}")
+        print(f"Ein Fehler beim Laden der kombinierten Daten ist aufgetreten: {e}")
         return pd.DataFrame()
 
 def add_features(df: pd.DataFrame) -> pd.DataFrame:
     """Fügt die 10 Kern-Indikatoren als Features hinzu."""
-    print(f"Füge für {len(df)} Tages-Datenpunkte Features hinzu...")
+    print(f"Füge für {len(df)} Tages-Datenpunkte technische Features hinzu...")
     df['sma_fast'] = ta.trend.sma_indicator(df['close'], window=20)
     df['sma_slow'] = ta.trend.sma_indicator(df['close'], window=50)
     df['rsi'] = ta.momentum.rsi(df['close'], window=14)
-    macd = ta.trend.MACD(df['close'], window_slow=26, window_fast=12, window_sign=9)
-    df['macd'] = macd.macd()
-    df['macd_signal'] = macd.macd_signal()
-    df['atr'] = ta.volatility.AverageTrueRange(high=df['high'], low=df['low'], close=df['close'], window=14).average_true_range()
-    bollinger = ta.volatility.BollingerBands(close=df['close'], window=20, window_dev=2)
-    df['bb_high'] = bollinger.bollinger_hband()
-    df['bb_low'] = bollinger.bollinger_lband()
-    stoch = ta.momentum.StochasticOscillator(high=df['high'], low=df['low'], close=df['close'], window=14, smooth_window=3)
-    df['stoch_k'] = stoch.stoch()
-    df['stoch_d'] = stoch.stoch_signal()
+    df['macd_diff'] = ta.trend.macd_diff(df['close'], window_slow=26, window_fast=12, window_sign=9)
+    df['bb_width'] = ta.volatility.bollinger_hband(df['close'], window=20, window_dev=2) - ta.volatility.bollinger_lband(df['close'], window=20, window_dev=2)
+    df['stoch_k'] = ta.momentum.stoch(df['high'], df['low'], df['close'], window=14, smooth_window=3)
+    df['roc'] = ta.momentum.roc(df['close'], window=12)
+    df['atr'] = ta.volatility.average_true_range(df['high'], df['low'], df['close'], window=14)
+    df['adx'] = ta.trend.adx(df['high'], df['low'], df['close'], window=14)
+    df['cci'] = ta.trend.cci(df['high'], df['low'], df['close'], window=20)
+    
+    # Der Sentiment-Score ist bereits geladen, wir müssen hier nichts hinzufügen.
     df.dropna(inplace=True)
     return df
 
-def get_labels_triple_barrier(prices, tp_mult, sl_mult, max_period):
-    """Erstellt Labels basierend auf der Triple-Barrier-Methode."""
-    labels = pd.Series(np.nan, index=prices.index)
-    log_returns = np.log(prices['close'] / prices['close'].shift(1))
-    volatility = log_returns.rolling(window=100).std() * 2
-    for i in range(len(prices) - max_period):
-        entry_price = prices['close'].iloc[i]
-        tp_barrier = entry_price * (1 + volatility.iloc[i] * tp_mult)
-        sl_barrier = entry_price * (1 - volatility.iloc[i] * sl_mult)
-        for j in range(1, max_period + 1):
-            future_price = prices['close'].iloc[i + j]
-            if future_price >= tp_barrier:
-                labels.iloc[i] = 1; break
-            elif future_price <= sl_barrier:
-                labels.iloc[i] = -1; break
-        if pd.isna(labels.iloc[i]):
-            labels.iloc[i] = 0
-    return labels
-
-def add_labels(df: pd.DataFrame, tp_mult=2.0, sl_mult=1.5, max_period=60) -> pd.DataFrame:
-    """Fügt die Ziel-Labels zum DataFrame hinzu."""
-    print(f"Starte Triple-Barrier-Labeling (max_period = {max_period} Tage)...")
-    labels = get_labels_triple_barrier(df[['close']], tp_mult, sl_mult, max_period)
-    df['label'] = labels
-    df.dropna(subset=['label'], inplace=True)
-    df['label'] = df['label'].astype(int)
-    print(f"Labeling abgeschlossen. Verteilung:\n{df['label'].value_counts(normalize=True)}")
-    return df
-
-def train_legendary_model(df, symbol):
-    """Führt einen Wettkampf zwischen KI-Modellen durch, um das beste zu finden."""
-    feature_columns = ['sma_fast', 'sma_slow', 'rsi', 'macd', 'macd_signal', 'atr', 'bb_high', 'bb_low', 'stoch_k', 'stoch_d']
-    X = df[feature_columns]
-    y = df['label'] + 1  # Wichtig: Label-Übersetzung für XGBoost/LightGBM
+def define_target_and_features(df: pd.DataFrame, future_candles: int = 5, profit_factor: float = 2.0, loss_factor: float = 1.0):
+    """Definiert das Ziel (y) und die Features (X), inklusive Sentiment-Score."""
+    df['future_high'] = df['high'].rolling(window=future_candles, min_periods=1).max().shift(-future_candles)
+    df['future_low'] = df['low'].rolling(window=future_candles, min_periods=1).min().shift(-future_candles)
     
+    atr = df['atr'].copy()
+    take_profit_price = df['close'] + (atr * profit_factor)
+    stop_loss_price = df['close'] - (atr * loss_factor)
+
+    conditions = [
+        (df['future_high'] >= take_profit_price),
+        (df['future_low'] <= stop_loss_price)
+    ]
+    choices = [1, -1] # 1 für Kaufen (TP erreicht), -1 für Verkaufen (SL erreicht)
+    df['target'] = np.select(conditions, choices, default=0) # 0 für Halten
+
+    df.dropna(subset=['target', 'future_high', 'future_low'], inplace=True)
+    
+    # Wir fügen 'sentiment_score' zur Liste der Features hinzu!
+    features = [
+        'sma_fast', 'sma_slow', 'rsi', 'macd_diff', 'bb_width', 
+        'stoch_k', 'roc', 'atr', 'adx', 'cci', 
+        'sentiment_score'
+    ]
+    
+    X = df[features]
+    y = df['target']
+    
+    return X, y
+
+# --- MODELLTRAINING & SPEICHERN ---
+
+def train_and_save_model(symbol: str, model_path: str):
+    """
+    Hauptfunktion, die den gesamten Prozess für ein Asset steuert:
+    Daten laden, Features hinzufügen, Modell trainieren und speichern.
+    """
+    # 1. Daten laden
+    data = load_data_from_db(symbol)
+    if data.empty:
+        print(f"Keine Daten für {symbol} geladen. Training wird übersprungen.")
+        return
+
+    # 2. Features und Zielvariable erstellen
+    featured_data = add_features(data.copy())
+    X, y = define_target_and_features(featured_data.copy())
+
+    if X.empty or y.empty:
+        print(f"Nicht genügend Daten für {symbol}, um Features und Ziel zu erstellen. Training wird übersprungen.")
+        return
+
+    # 3. Daten aufteilen
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
-
-    model_params = {
-        'RandomForestClassifier': {
-            'model': RandomForestClassifier(random_state=42, class_weight='balanced'),
-            'params': {'n_estimators': randint(100, 500), 'max_depth': [10, 20, 30, None], 'min_samples_leaf': randint(1, 5)}
-        },
-        'XGBClassifier': {
-            'model': XGBClassifier(random_state=42, use_label_encoder=False, eval_metric='mlogloss'),
-            'params': {'n_estimators': randint(100, 500), 'max_depth': randint(3, 10), 'learning_rate': [0.01, 0.1, 0.2]}
-        },
-        'LGBMClassifier': {
-            'model': LGBMClassifier(random_state=42, class_weight='balanced', verbose=-1),
-            'params': {'n_estimators': randint(100, 500), 'learning_rate': [0.01, 0.1, 0.2], 'num_leaves': randint(20, 50)}
-        }
-    }
-
-    best_score = 0
-    best_model = None
-    champion_name = ""
-
-    print("\n--- STARTE LEGENDÄREN KI-WETTKAMPF ---")
-    for model_name, mp in model_params.items():
-        print(f"\n===== Teste Champion: {model_name} =====")
-        random_search = RandomizedSearchCV(mp['model'], param_distributions=mp['params'], n_iter=25, cv=3, scoring='accuracy', n_jobs=-1, random_state=42, verbose=1)
-        random_search.fit(X_train, y_train)
-        
-        print(f"Beste Parameter für {model_name}: {random_search.best_params_}")
-        print(f"Bester Score für {model_name}: {random_search.best_score_:.4f}")
-        
-        if random_search.best_score_ > best_score:
-            best_score = random_search.best_score_
-            best_model = random_search.best_estimator_
-            champion_name = model_name
-            print(f"--- NEUER CHAMPION: {model_name} ---")
-
-    print(f"\n\n--- DER SIEGER IST: {champion_name} mit einem Score von {best_score:.4f} ---")
+    print(f"Trainingsdaten für {symbol}: {X_train.shape[0]} Zeilen")
+    print(f"Testdaten für {symbol}: {X_test.shape[0]} Zeilen")
     
-    print("\nPerformance des legendären Modells auf den Test-Daten:")
-    y_pred = best_model.predict(X_test)
+    # 4. Modell trainieren
+    print(f"Starte das Training des RandomForest-Modells für {symbol}...")
+    model = RandomForestClassifier(n_estimators=100, random_state=42, class_weight='balanced')
+    model.fit(X_train, y_train)
+    print("Modell-Training abgeschlossen.")
+
+    # 5. Modell evaluieren
+    print("\n--- Evaluationsergebnis ---")
+    y_pred = model.predict(X_test)
     print(classification_report(y_test, y_pred, target_names=['Verkaufen (-1)', 'Halten (0)', 'Kaufen (1)']))
-    
-    os.makedirs(MODEL_DIR, exist_ok=True)
-    symbol_filename = symbol.replace('/', '')
-    model_path = os.path.join(MODEL_DIR, f'model_{symbol_filename}_swing.pkl')
-    joblib.dump(best_model, model_path)
-    print(f"Legendäres Modell erfolgreich gespeichert unter: {model_path}")
+    print("-------------------------\n")
 
-def run_training_pipeline():
-    """Führt den gesamten Trainingsprozess für alle Symbole aus."""
-    for symbol in SYMBOLS:
-        print(f"\n--- Starte Daily-Verarbeitung für {symbol} ---")
-        df = load_data_from_db(symbol)
-        if df is not None and not df.empty and len(df) > 250:
-            df_features = add_features(df)
-            df_labeled = add_labels(df_features)
-            if not df_labeled.empty:
-                train_legendary_model(df_labeled, symbol)
-        else:
-            print(f"Nicht genügend Daten für {symbol} geladen, um das Training zu starten.")
+    # 6. Modell speichern
+    # Sicherstellen, dass der Ordner 'models' existiert
+    os.makedirs(os.path.dirname(model_path), exist_ok=True)
+    joblib.dump(model, model_path)
+    print(f"Modell für {symbol} erfolgreich unter '{model_path}' gespeichert.")
+
+# --- HAUPTPROGRAMM ---
 
 if __name__ == '__main__':
-    run_training_pipeline()
+    print("=== Starte tägliches KI-Training für BTC/USD und XAU/USD ===")
+    
+    # Training für Bitcoin
+    print("\n--- Training für BTC/USD ---")
+    # GEÄNDERT: von 'BTCUSD' zu 'BTC/USD'
+    train_and_save_model('BTC/USD', MODEL_PATH_BTC)
+    
+    # Training für Gold
+    print("\n--- Training für XAU/USD ---")
+    # GEÄNDERT: von 'XAUUSD' zu 'XAU/USD'
+    train_and_save_model('XAU/USD', MODEL_PATH_XAU)
+    
+    print("\n=== Tägliches KI-Training abgeschlossen. ===")

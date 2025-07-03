@@ -97,9 +97,6 @@
         color: var(--text-color);
         background-color: var(--bg-color);
       }
-      tr:nth-child(even) {
-        background-color: var(--bg-color);
-      }
       .back-link {
         display: block;
         text-align: center;
@@ -164,7 +161,7 @@
       </div>
     </div>
 
-    <h2>🏆 Champion-Strategie: Daily Swing Trading</h2>
+    <h2>🏆 Champion: Die "Genie"-Strategie</h2>
 
     {% for result in results %}
     <div class="container">
@@ -199,9 +196,8 @@
     {% else %}
     <div class="container">
       <p class="loading-text" style="color: red">
-        Keine Backtest-Daten gefunden. Bitte führe den 'backtester_daily.py' aus
-        und stelle sicher, dass die 'backtest_results_daily.json' Datei auf dem
-        Server vorhanden ist.
+        Keine Backtest-Daten gefunden. Bitte 'backtester_daily_genius.py'
+        ausführen.
       </p>
     </div>
     {% endfor %}
@@ -216,59 +212,40 @@
           function drawChart(containerId, chartData, label) {
               const ctx = document.getElementById(containerId);
               if (!ctx) return;
-
-              const canvasCtx = ctx.getContext('2d');
               const labels = chartData.map(item => item.timestamp);
               const data = chartData.map(item => item.equity);
 
-              new Chart(canvasCtx, {
+              new Chart(ctx.getContext('2d'), {
                   type: 'line',
                   data: {
                       labels: labels,
                       datasets: [{
-                          label: label,
-                          data: data,
+                          label: label, data: data,
                           borderColor: isDarkMode ? '#68d391' : '#2f855a',
                           backgroundColor: isDarkMode ? 'rgba(104, 211, 145, 0.1)' : 'rgba(47, 133, 90, 0.1)',
-                          fill: true,
-                          tension: 0.1,
-                          borderWidth: 2,
-                          pointRadius: 0
+                          fill: true, tension: 0.1, borderWidth: 2, pointRadius: 0
                       }]
                   },
                   options: {
-                      responsive: true,
-                      maintainAspectRatio: false,
+                      responsive: true, maintainAspectRatio: false,
                       scales: {
-                          y: {
-                              ticks: { callback: value => `$${value.toFixed(2)}`, color: isDarkMode ? '#e2e8f0' : '#3d4852' },
-                              grid: { color: isDarkMode ? '#4a5568' : '#e2e8f0' }
-                          },
-                          x: {
-                              ticks: { color: isDarkMode ? '#e2e8f0' : '#3d4852' },
-                              grid: { display: false }
-                          }
+                          y: { ticks: { callback: value => `$${value.toFixed(2)}`, color: isDarkMode ? '#e2e8f0' : '#3d4852' }, grid: { color: isDarkMode ? '#4a5568' : '#e2e8f0' } },
+                          x: { ticks: { color: isDarkMode ? '#e2e8f0' : '#3d4852' }, grid: { display: false } }
                       },
-                      plugins: {
-                          legend: {
-                              labels: { color: isDarkMode ? '#e2e8f0' : '#3d4852' }
-                          }
-                      }
+                      plugins: { legend: { labels: { color: isDarkMode ? '#e2e8f0' : '#3d4852' } } }
                   }
               });
           }
 
-          // Initialisiere die Charts, wenn Daten vorhanden sind
           if (resultsData && resultsData.length > 0) {
               resultsData.forEach(result => {
                   const symbolId = result.Symbol.replace('/', '');
-                  if (result.equity_curve) {
-                      drawChart(`equity-chart-${symbolId}`, result.equity_curve, `Kapitalverlauf für ${result.Symbol}`);
+                  if(result.equity_curve){
+                    drawChart(`equity-chart-${symbolId}`, result.equity_curve, `Kapitalverlauf für ${result.Symbol}`);
                   }
               });
           }
 
-          // Dark Mode Logik
           const themeSwitch = document.getElementById('checkbox');
           const currentTheme = localStorage.getItem('theme');
           if (currentTheme) {

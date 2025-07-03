@@ -1,75 +1,85 @@
-# sentiment_analyzer.py (Platin-Standard: Analysiert die Stimmung von Nachrichten)
+# sentiment_analyzer.py (Finale, korrigierte Version)
+import finnhub
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+from datetime import datetime, timedelta
 import os
-import requests
 from dotenv import load_dotenv
-from transformers import pipeline # Das Herzstück unserer neuen KI
+
+# KORREKTUR: Wir importieren direkt das 'engine' und die 'daily_sentiment' Tabelle
+from database import engine, daily_sentiment
+from sqlalchemy.dialects.postgresql import insert
 
 # --- KONFIGURATION ---
 load_dotenv()
-NEWSAPI_KEY = os.getenv('NEWSAPI_KEY')
+FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY")
+if not FINNHUB_API_KEY:
+    raise ValueError("Bitte trage deinen FINNHUB_API_KEY in die .env Datei ein!")
 
-# Lade das vortrainierte deutsche Sentiment-Modell
-# Das Modell wird beim ersten Mal automatisch heruntergeladen.
-print("Lade Sentiment-Analyse-Modell (kann beim ersten Mal dauern)...")
-sentiment_pipeline = pipeline("sentiment-analysis", model="oliverguhr/german-sentiment-bert")
-print("Modell geladen.")
+# --- INITIALISIERUNG ---
+finnhub_client = finnhub.Client(api_key=FINNHUB_API_KEY)
+analyzer = SentimentIntensityAnalyzer()
 
+def analyze_and_store_sentiment(asset: str):
+    """
+    Holt Nachrichten, analysiert das Sentiment und speichert den Score des letzten Tages
+    konsistent mit SQLAlchemy in der Datenbank.
+    """
+    yesterday = datetime.now() - timedelta(1)
+    date_str = yesterday.strftime('%Y-%m-%d')
+    date_obj = datetime.strptime(date_str, '%Y-%m-%d')
+    
+    print(f"Sammle Nachrichten für {asset} vom {date_str}...")
 
-def fetch_news(keywords: str):
-    """Holt Nachrichten-Schlagzeilen zu bestimmten Schlüsselwörtern."""
-    print(f"\n--- Suche nach Nachrichten für: {keywords} ---")
-    url = (f"https://newsapi.org/v2/everything?"
-           f"q=({keywords})&"
-           f"sortBy=popularity&"
-           f"language=de&"
-           f"pageSize=20&" # Wir limitieren auf die 20 relevantesten Nachrichten
-           f"apiKey={NEWSAPI_KEY}")
     try:
-        response = requests.get(url)
-        response.raise_for_status()
-        data = response.json()
-        headlines = [article['title'] for article in data.get('articles', [])]
-        print(f"{len(headlines)} Schlagzeilen gefunden.")
-        return headlines
-    except Exception as e:
-        print(f"Fehler beim Abrufen der Nachrichten: {e}")
-        return []
+        # Kategorie für Finnhub-API zuordnen
+        category = 'crypto' if asset == 'BTC/USD' else 'forex'
+        news = finnhub_client.general_news(category, min_id=0)
+        
+        if not news:
+            print(f"Keine Nachrichten für die Kategorie '{category}' gefunden.")
+            return
 
-def analyze_sentiment(headlines: list):
-    """Analysiert eine Liste von Schlagzeilen und gibt die Stimmung zurück."""
-    if not headlines:
-        return None
-    
-    print("Analysiere Stimmung der Schlagzeilen...")
-    sentiments = sentiment_pipeline(headlines)
-    
-    # Wir berechnen einen durchschnittlichen "Sentiment Score"
-    # Positive Scores sind gut, negative schlecht.
-    total_score = 0
-    for s in sentiments:
-        if s['label'] == 'positive':
-            total_score += s['score']
-        elif s['label'] == 'negative':
-            total_score -= s['score']
-    
-    # Durchschnitt berechnen und auf 4 Nachkommastellen runden
-    average_score = round(total_score / len(sentiments), 4) if headlines else 0
-    
-    print(f"Durchschnittlicher Sentiment-Score: {average_score}")
-    return average_score
+        sentiment_scores = []
+        for article in news:
+            article_date = datetime.fromtimestamp(article['datetime'])
+            if article_date.strftime('%Y-%m-%d') == date_str:
+                headline = article['headline']
+                score = analyzer.polarity_scores(headline)['compound']
+                sentiment_scores.append(score)
+
+        if not sentiment_scores:
+            print(f"Keine relevanten Schlagzeilen für {asset} am {date_str} gefunden.")
+            avg_score = 0.0
+        else:
+            avg_score = sum(sentiment_scores) / len(sentiment_scores)
+            print(f"Durchschnittlicher Sentiment-Score für {asset}: {avg_score:.4f}")
+
+        # Score mit SQLAlchemy in der Datenbank speichern/aktualisieren
+        with engine.connect() as conn:
+            stmt = insert(daily_sentiment).values(
+                asset=asset,
+                date=date_obj,
+                sentiment_score=avg_score
+            )
+            # Falls für den Tag schon ein Eintrag existiert, wird er aktualisiert.
+            stmt = stmt.on_conflict_do_update(
+                index_elements=['asset', 'date'],
+                set_={'sentiment_score': stmt.excluded.sentiment_score}
+            )
+            conn.execute(stmt)
+            conn.commit()
+            print(f"Sentiment-Score für {asset} am {date_str} erfolgreich gespeichert.")
+
+    except Exception as e:
+        print(f"Ein Fehler ist aufgetreten bei {asset}: {e}")
 
 if __name__ == '__main__':
-    # Bitcoin-Analyse
-    btc_headlines = fetch_news("Bitcoin OR BTC")
-    btc_sentiment = analyze_sentiment(btc_headlines)
+    # GELÖSCHT: Der Aufruf von create_sentiment_table() ist nicht mehr nötig.
     
-    # Gold-Analyse
-    gold_headlines = fetch_news("Goldpreis OR XAU")
-    gold_sentiment = analyze_sentiment(gold_headlines)
+    print("=== Starte tägliche Sentiment-Analyse ===")
     
-    print("\n======================================")
-    print("      FINALE STIMMUNGS-ANALYSE      ")
-    print("======================================")
-    print(f"Aktueller Sentiment-Score für Bitcoin: {btc_sentiment}")
-    print(f"Aktueller Sentiment-Score für Gold:    {gold_sentiment}")
-    print("======================================")
+    # KORREKTUR: Wir benutzen die richtigen Symbole mit Schrägstrich
+    analyze_and_store_sentiment('BTC/USD')
+    analyze_and_store_sentiment('XAU/USD')
+
+    print("=== Sentiment-Analyse abgeschlossen ===")

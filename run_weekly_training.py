@@ -1,39 +1,51 @@
-# run_weekly_training.py
-# Dieses Skript ist der "Generalunternehmer" für unser wöchentliches Training.
-# Es ruft nacheinander alle nötigen Trainer auf, um die Modelle für den Live-Betrieb zu aktualisieren.
+# run_weekly_training.py (Korrigierte und verbesserte Version)
+import subprocess
+import sys
 
-print("==============================================")
-print("=== STARTE WÖCHENTLICHEN TRAINING-ZYKLUS ===")
-print("==============================================")
+# --- KONFIGURATION ---
+# Wir listen hier alle unsere spezialisierten Trainer auf.
+# WICHTIG: Wir rufen jetzt den neuen 'swing' Trainer auf!
+TRAINER_SKRIPTE = [
+    'ki_trainer_daily.py',
+    'ki_trainer_swing.py', # ERSETZT 'ki_trainer_short.py'
+    'ki_trainer_genius.py'
+]
 
-# Wir importieren die Hauptfunktionen aus unseren spezialisierten Trainer-Skripten
-# und geben ihnen klare, verständliche Namen.
-try:
-    from ki_trainer_daily import run_training_pipeline as train_long_models
-    from ki_trainer_short import run_training_pipeline as train_short_models
-except ImportError as e:
-    print(f"FEHLER: Ein Trainer-Modul konnte nicht importiert werden: {e}")
-    print("Stelle sicher, dass 'ki_trainer_daily.py' und 'ki_trainer_short.py' existieren.")
-    exit()
+def run_training_cycle():
+    """
+    Führt alle definierten Trainer-Skripte nacheinander aus.
+    """
+    print("==============================================")
+    print("=== STARTE WÖCHENTLICHEN TRAINING-ZYKLUS ===")
+    print("==============================================")
 
-# --- Trainingsschritt 1: Long-Modelle ---
-print("\n>>> TEIL 1: Trainiere die LONG-Modelle (Daily)...")
-try:
-    train_long_models()
-    print(">>> LONG-Modell-Training ERFOLGREICH abgeschlossen.")
-except Exception as e:
-    print(f"!!! FEHLER beim Training der LONG-Modelle: {e} !!!")
+    # Wir benutzen den gleichen Python-Interpreter, mit dem dieses Skript gestartet wurde.
+    python_executable = sys.executable
 
+    for skript in TRAINER_SKRIPTE:
+        print(f"\n--- Starte Trainer: {skript} ---")
+        try:
+            # Führe das Skript als separaten Prozess aus.
+            # Das ist robust und stellt sicher, dass jedes Skript frisch startet.
+            result = subprocess.run(
+                [python_executable, skript], 
+                check=True,         # Wirft einen Fehler, wenn das Skript fehlschlägt
+                capture_output=True, # Fängt die Ausgabe des Skripts auf
+                text=True           # Kodiert die Ausgabe als Text
+            )
+            # Gib die Ausgabe des erfolgreichen Skripts aus
+            print(result.stdout)
+            print(f"--- Trainer {skript} erfolgreich abgeschlossen. ---")
+        except FileNotFoundError:
+            print(f"FEHLER: Das Skript '{skript}' wurde nicht gefunden.")
+        except subprocess.CalledProcessError as e:
+            # Wenn das Skript einen Fehler hat, geben wir die Fehlermeldung aus
+            print(f"FEHLER: Das Skript '{skript}' wurde mit einem Fehler beendet.")
+            print("\n--- FEHLERMELDUNG ---")
+            print(e.stderr)
+            print("--------------------")
+        except Exception as e:
+            print(f"Ein unerwarteter Fehler ist aufgetreten: {e}")
 
-# --- Trainingsschritt 2: Short-Modelle ---
-print("\n\n>>> TEIL 2: Trainiere die SHORT-Modelle (Daily)...")
-try:
-    train_short_models()
-    print(">>> SHORT-Modell-Training ERFOLGREICH abgeschlossen.")
-except Exception as e:
-    print(f"!!! FEHLER beim Training der SHORT-Modelle: {e} !!!")
-
-
-print("\n\n=============================================")
-print("=== WÖCHENTLICHER TRAINING-ZYKLUS BEENDET ===")
-print("=============================================")
+if __name__ == '__main__':
+    run_training_cycle()

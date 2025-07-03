@@ -22,29 +22,18 @@ def index():
 
 @app.route('/dashboard')
 def dashboard():
-    """Liest die Backtest-Ergebnisse der finalen Long- und Short-Tagesstrategien."""
-    results = {'long': [], 'short': []}
-    
-    # Lade Ergebnisse der Long-Strategie
+    """Reads the backtest results of the final "Genie" strategy."""
+    results = []
     try:
-        # WICHTIG: Stellt sicher, dass diese Datei von backtester_daily.py erstellt wurde
-        with open('backtest_results_daily_long.json', 'r', encoding='utf-8') as f:
-            results['long'] = json.load(f)
+        # THIS IS THE FIX: It now loads the results from your "Genie" model
+        with open('backtest_results_genius.json', 'r', encoding='utf-8') as f:
+            results = json.load(f)
+        print("Successfully loaded 'backtest_results_genius.json'.")
     except FileNotFoundError:
-        print("Warnung: backtest_results_daily_long.json nicht gefunden.")
+        print("WARNING: 'backtest_results_genius.json' not found. Please run 'backtester_daily_genius.py'.")
     except Exception as e:
-        print(f"Fehler beim Laden von daily_long.json: {e}")
-    
-    # Lade Ergebnisse der Short-Strategie
-    try:
-        # WICHTIG: Stellt sicher, dass diese Datei von backtester_short.py erstellt wurde
-        with open('backtest_results_daily_short.json', 'r', encoding='utf-8') as f:
-            results['short'] = json.load(f)
-    except FileNotFoundError:
-        print("Warnung: backtest_results_daily_short.json nicht gefunden.")
-    except Exception as e:
-        print(f"Fehler beim Laden von daily_short.json: {e}")
-    
+        print(f"Error loading backtest_results_genius.json: {e}")
+
     return render_template('dashboard.html', results=results)
 
 # PWA-Routen
