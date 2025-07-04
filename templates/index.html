@@ -17,10 +17,12 @@
         --text-color: #3d4852;
         --header-color: #2c5282;
         --border-color: #e2e8f0;
-        --hover-color: #f7fafc;
-        --switch-bg-color: #ccc;
-        --green-positive-bg: #c6f6d5;
-        --red-negative-bg: #fed7d7;
+        --green: #2f855a;
+        --red: #c53030;
+        --grey: #4a5568;
+        --green-card: #c6f6d5;
+        --red-card: #fed7d7;
+        --grey-card: #e2e8f0;
       }
       body.dark-mode {
         --bg-color: #1a202c;
@@ -28,13 +30,12 @@
         --text-color: #e2e8f0;
         --header-color: #63b3ed;
         --border-color: #4a5568;
-        --hover-color: #4a5568;
-        --switch-bg-color: #718096;
-        --green-positive-bg: #2f4236;
-        --red-negative-bg: #4c2b2b;
-      }
-      * {
-        box-sizing: border-box;
+        --green: #68d391;
+        --red: #fc8181;
+        --grey: #a0aec0;
+        --green-card: #2f855a;
+        --red-card: #9b2c2c;
+        --grey-card: #4a5568;
       }
       body {
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
@@ -42,396 +43,164 @@
         background-color: var(--bg-color);
         color: var(--text-color);
         margin: 0;
-        padding: 2rem;
-        display: flex;
-        align-items: center;
-        flex-direction: column;
-        min-height: 100vh;
+        padding: 20px;
         transition: background-color 0.3s, color 0.3s;
       }
-      .header-container {
+      .header {
         display: flex;
-        justify-content: center;
+        justify-content: space-between;
         align-items: center;
-        width: 100%;
-        max-width: 1000px;
-        position: relative;
-        margin-bottom: 1rem;
+        margin-bottom: 20px;
+        padding-bottom: 10px;
+        border-bottom: 2px solid var(--border-color);
       }
-      h1 {
+      .header h1 {
         color: var(--header-color);
-        text-align: center;
-        margin: 0 auto;
-        font-size: 2.5rem;
+        margin: 0;
       }
-      .container,
-      #chart-container {
+      .container {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 20px;
+      }
+      .card {
         background-color: var(--card-bg-color);
-        transition: background-color 0.3s;
-        width: 100%;
-        max-width: 1000px;
-        padding: 2rem;
-        border-radius: 12px;
-        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1),
-          0 4px 6px -2px rgba(0, 0, 0, 0.05);
-        margin-bottom: 2rem;
-        border: 1px solid var(--border-color);
-      }
-      table {
-        width: 100%;
-        border-collapse: collapse;
-      }
-      th,
-      td {
-        padding: 1rem;
-        border-bottom: 1px solid var(--border-color);
-        text-align: left;
-      }
-      th {
-        font-size: 0.85rem;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        color: var(--text-color);
-        background-color: var(--bg-color);
-      }
-      .main-row:hover {
-        background-color: var(--hover-color);
-        cursor: pointer;
-      }
-      .details-row {
-        display: none;
-      }
-      .details-row.show {
-        display: table-row;
-      }
-      .details-cell {
-        padding-left: 3rem !important;
-        background-color: var(--bg-color);
-        font-size: 0.9em;
-        border-bottom: 1px solid var(--border-color);
-      }
-      body.dark-mode .details-cell {
-        background-color: #171923;
-      }
-      #chart-container {
-        height: 50vh;
-      }
-      .loading-text {
-        text-align: center;
-        padding: 20px;
-        color: #777;
-        font-style: italic;
-      }
-      .nav-link {
-        text-align: center;
-        margin-bottom: 1rem;
-      }
-      .nav-link a {
-        color: var(--header-color);
-        text-decoration: none;
-        font-weight: bold;
-      }
-      .subscribe-container {
-        margin-bottom: 1rem;
-      }
-      #subscribe-button {
-        font-size: 0.9rem;
-        padding: 10px 15px;
         border-radius: 8px;
-        border: none;
-        background-color: #4a5568;
-        color: white;
-        cursor: pointer;
-        font-weight: bold;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        overflow: hidden;
+        transition: transform 0.2s;
       }
-      body.dark-mode #subscribe-button {
-        background-color: #718096;
+      .card:hover {
+        transform: translateY(-5px);
       }
-      .theme-switch-wrapper {
+      .card.green {
+        border-left: 5px solid var(--green);
+      }
+      .card.red {
+        border-left: 5px solid var(--red);
+      }
+      .card.grey {
+        border-left: 5px solid var(--grey);
+      }
+
+      .card-header {
         display: flex;
+        justify-content: space-between;
         align-items: center;
-        margin-left: auto;
+        padding: 15px 20px;
+        background-color: var(--card-bg-color);
+        border-bottom: 1px solid var(--border-color);
       }
-      .theme-switch {
-        display: inline-block;
-        height: 34px;
-        position: relative;
-        width: 60px;
+      .card-header h2 {
+        margin: 0;
+        font-size: 1.2em;
       }
-      .theme-switch input {
-        display: none;
+      .card-header .fas {
+        font-size: 1.5em;
       }
-      .slider {
-        background-color: var(--switch-bg-color);
-        bottom: 0;
-        cursor: pointer;
-        left: 0;
-        right: 0;
-        top: 0;
-        position: absolute;
-        transition: 0.4s;
-        border-radius: 34px;
+      .card.green .fas {
+        color: var(--green);
       }
-      .slider:before {
-        background-color: #fff;
-        bottom: 4px;
-        content: "";
-        height: 26px;
-        left: 4px;
-        position: absolute;
-        transition: 0.4s;
-        width: 26px;
-        border-radius: 50%;
+      .card.red .fas {
+        color: var(--red);
       }
-      input:checked + .slider {
-        background-color: #4c51bf;
+      .card.grey .fas {
+        color: var(--grey);
       }
-      input:checked + .slider:before {
-        transform: translateX(26px);
+
+      .card-body {
+        padding: 20px;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+      .card-body p {
+        margin: 0;
+      }
+      .card-footer {
+        padding: 10px 20px;
+        font-size: 0.8em;
+        color: var(--grey);
+        text-align: right;
+        background-color: var(--card-bg-color);
+        border-top: 1px solid var(--border-color);
+      }
+      .error {
+        color: var(--red);
+        text-align: center;
       }
     </style>
   </head>
   <body>
-    <div class="header-container">
-      <h1>KI-Handelssignale</h1>
-      <div class="theme-switch-wrapper">
-        <label class="theme-switch" for="checkbox"
-          ><input type="checkbox" id="checkbox" />
-          <div class="slider round"></div
-        ></label>
-      </div>
-    </div>
-    <p class="nav-link"><a href="/dashboard">Zum Analyse-Dashboard</a></p>
-    <div class="subscribe-container">
-      <button id="subscribe-button">Push-Benachrichtigungen</button>
+    <div class="header">
+      <h1>KI Finanz-Signale</h1>
+      <a href="/dashboard">Zum Analyse-Dashboard</a>
     </div>
 
-    <div class="container">
-      <table>
-        <thead>
-          <tr>
-            <th>Asset</th>
-            <th>Signal-Preis</th>
-            <th>Signal</th>
-          </tr>
-        </thead>
-        <tbody id="financial-data"></tbody>
-      </table>
-    </div>
-    <div id="chart-container"><canvas id="financial-chart"></canvas></div>
+    <div class="container" id="assets-container"></div>
+
+    <button id="subscribe-button">Push-Benachrichtigungen aktivieren</button>
 
     <script>
-      let financialChart;
-
-      function initChart() {
-        const chartCanvas = document.getElementById("financial-chart");
-        if (!chartCanvas) return;
-        const ctx = chartCanvas.getContext("2d");
-        financialChart = new Chart(ctx, {
-          type: "line",
-          data: {
-            labels: [],
-            datasets: [
-              {
-                label: "Kursverlauf",
-                data: [],
-                borderColor: "#007bff",
-                tension: 0.1,
-                borderWidth: 2,
-                pointRadius: 0,
-              },
-              {
-                label: "Signal",
-                data: [],
-                pointStyle: "triangle",
-                pointRadius: 8,
-                pointHoverRadius: 10,
-                showLine: false,
-              },
-            ],
-          },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { labels: { color: "#333" } } },
-            scales: {
-              y: { ticks: { color: "#333" }, grid: { color: "#ddd" } },
-              x: { ticks: { color: "#333" }, grid: { color: "#ddd" } },
-            },
-          },
-        });
-      }
-
-      async function updateChart(symbol) {
-        try {
-          const response = await fetch(`/historical-data/${symbol}`);
-          const chartData = await response.json();
-          if (chartData.error) throw new Error(chartData.error);
-          financialChart.data.labels = chartData.labels;
-          financialChart.data.datasets[0].data = chartData.data;
-          financialChart.data.datasets[0].label = `${symbol} Kursverlauf (24H)`;
-          financialChart.data.datasets[1].data = [];
-          financialChart.update();
-        } catch (error) {
-          console.error(
-            `Fehler beim Laden der Chart-Daten für ${symbol}:`,
-            error
-          );
-        }
-      }
-
-      function addSignalMarker(signalData) {
-        const signalDate = signalData.timestamp.split(" ")[0];
-        const signalIndex = financialChart.data.labels.findIndex((label) =>
-          label.startsWith(signalDate)
-        );
-        const markerCount = financialChart.data.labels.length;
-        financialChart.data.datasets[1].data = new Array(markerCount).fill(
-          null
-        );
-        if (signalIndex !== -1 && signalData.signal !== "Halten") {
-          financialChart.data.datasets[1].data[signalIndex] = parseFloat(
-            signalData.entry
-          );
-          let markerColor =
-            signalData.signal === "Kaufen" ? "#28a745" : "#dc3545";
-          let markerStyle =
-            signalData.signal === "Kaufen" ? "triangle" : "rectRot";
-          financialChart.data.datasets[1].borderColor = markerColor;
-          financialChart.data.datasets[1].backgroundColor = markerColor;
-          financialChart.data.datasets[1].pointStyle = markerStyle;
-        }
-        financialChart.update();
-      }
-
-      async function populateTable() {
-        const tableBody = document.getElementById("financial-data");
-        if (!tableBody) return;
-        tableBody.innerHTML = `<tr><td colspan="3" class="loading-text">Lade Daten...</td></tr>`;
+      // Diese Funktion holt die Live-Signale vom Server und zeigt sie an
+      async function fetchAssets() {
         try {
           const response = await fetch("/api/assets");
           const assets = await response.json();
-          if (assets.error) throw new Error(assets.error);
-          tableBody.innerHTML = "";
+          const container = document.getElementById("assets-container");
+          container.innerHTML = ""; // Leere den Container vor dem Neuzeichnen
 
-          assets.forEach((data, index) => {
-            const mainRow = document.createElement("tr");
-            mainRow.classList.add("main-row");
-            mainRow.dataset.index = index;
-
-            if (data.color === "green")
-              mainRow.style.backgroundColor = document.body.classList.contains(
-                "dark-mode"
-              )
-                ? "#2f4236"
-                : "#c6f6d5";
-            else if (data.color === "red")
-              mainRow.style.backgroundColor = document.body.classList.contains(
-                "dark-mode"
-              )
-                ? "#4c2b2b"
-                : "#fed7d7";
-
-            mainRow.innerHTML = `
-                        <td><strong>${data.asset}</strong></td>
-                        <td>${data.entry}</td>
-                        <td>${data.signal} ${
-              data.icon && data.icon !== "circle"
-                ? `<i class="fas fa-${data.icon}" style="margin-left: 8px;"></i>`
-                : ""
-            }</td>
-                    `;
-            tableBody.appendChild(mainRow);
-
-            const detailsRow = document.createElement("tr");
-            detailsRow.classList.add("details-row");
-            detailsRow.id = `details-${index}`;
-            detailsRow.innerHTML = `
-                        <td colspan="3" class="details-cell">
-                            <strong>Take Profit:</strong> ${data.takeProfit} | 
-                            <strong>Stop Loss:</strong> ${data.stopLoss} |
-                            <strong>Signalzeit:</strong> ${data.timestamp}
-                        </td>
-                    `;
-            tableBody.appendChild(detailsRow);
-
-            mainRow.addEventListener("click", () => {
-              detailsRow.classList.toggle("show");
-              updateChart(data.asset).then(() => addSignalMarker(data));
-            });
-          });
-          if (
-            assets.length > 0 &&
-            !financialChart.data.datasets[0].label.includes(assets[0].asset)
-          ) {
-            const firstAsset = assets[0];
-            updateChart(firstAsset.asset).then(() =>
-              addSignalMarker(firstAsset)
-            );
+          if (assets.error) {
+            container.innerHTML = `<p class="error">${assets.error}</p>`;
+            return;
           }
+
+          assets.forEach((asset) => {
+            const card = document.createElement("div");
+            card.className = `card ${asset.color}`;
+            card.innerHTML = `
+                        <div class="card-header">
+                            <h2>${asset.name}</h2>
+                            <i class="fas ${asset.icon}"></i>
+                        </div>
+                        <div class="card-body">
+                            <p><strong>Signal:</strong> ${asset.signal}</p>
+                            <p><strong>Einstiegspreis:</strong> ${asset.entry_price}</p>
+                            <p><strong>Take Profit:</strong> ${asset.take_profit}</p>
+                            <p><strong>Stop Loss:</strong> ${asset.stop_loss}</p>
+                        </div>
+                        <div class="card-footer">
+                            Letzte Aktualisierung: ${asset.timestamp}
+                        </div>
+                    `;
+            container.appendChild(card);
+          });
         } catch (error) {
-          console.error("Fehler beim Laden der Finanzdaten:", error);
-          tableBody.innerHTML = `<tr><td colspan="3" class="loading-text" style="color: red;">Fehler beim Laden der Daten.</td></tr>`;
+          console.error("Fehler beim Abrufen der Asset-Daten:", error);
+          const container = document.getElementById("assets-container");
+          container.innerHTML =
+            "<p class='error'>Fehler: Live-Signale konnten nicht geladen werden.</p>";
         }
       }
 
+      // Führe fetchAssets sofort aus und dann alle 5 Minuten
       document.addEventListener("DOMContentLoaded", () => {
-        initChart();
-        populateTable();
-        setInterval(populateTable, 60000);
+        fetchAssets();
+        setInterval(fetchAssets, 300000); // 300000ms = 5 Minuten
+      });
 
-        const themeSwitch = document.getElementById("checkbox");
-        const currentTheme = localStorage.getItem("theme");
-        if (currentTheme) {
-          document.body.classList.add(currentTheme);
-          if (currentTheme === "dark-mode") {
-            themeSwitch.checked = true;
-            if (financialChart) {
-              const newColor = "#e0e0e0";
-              const newGridColor = "#444";
-              financialChart.options.plugins.legend.labels.color = newColor;
-              financialChart.options.scales.y.ticks.color = newColor;
-              financialChart.options.scales.x.ticks.color = newColor;
-              financialChart.options.scales.y.grid.color = newGridColor;
-              financialChart.options.scales.x.grid.color = newGridColor;
-              financialChart.update();
-            }
-          }
-        }
-
-        themeSwitch.addEventListener("change", function (event) {
-          document.body.classList.toggle("dark-mode", event.target.checked);
-          localStorage.setItem(
-            "theme",
-            event.target.checked ? "dark-mode" : "light-mode"
-          );
-          window.location.reload();
-        });
-
-        // Push Notification Logic
+      // --- LOGIK FÜR PUSH-BENACHRICHTIGUNGEN & SERVICE WORKER ---
+      document.addEventListener("DOMContentLoaded", () => {
         if ("serviceWorker" in navigator && "PushManager" in window) {
-          const VAPID_PUBLIC_KEY =
-            "BBNrKK7tabrsNhMb01nszlMohlKO0w2VfBcokwouI2QR_WOL8dRl8ZnS9OLJJLdpQOnpH9LFU9e9lBW7Zd-DgfA";
-          function urlBase64ToUint8Array(base64String) {
-            const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
-            const base64 = (base64String + padding)
-              .replace(/-/g, "+")
-              .replace(/_/g, "/");
-            const rawData = window.atob(base64);
-            const outputArray = new Uint8Array(rawData.length);
-            for (let i = 0; i < rawData.length; ++i) {
-              outputArray[i] = rawData.charCodeAt(i);
-            }
-            return outputArray;
-          }
           async function subscribeUser() {
             try {
               const registration = await navigator.serviceWorker.ready;
               const subscription = await registration.pushManager.subscribe({
                 userVisibleOnly: true,
-                applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+                // Ersetze diesen Key mit deinem Public VAPID Key
+                applicationServerKey: "DEIN_PUBLIC_VAPID_KEY",
               });
-              await fetch("/api/save-subscription", {
+              await fetch("/subscribe", {
                 method: "POST",
                 body: JSON.stringify(subscription),
                 headers: { "Content-Type": "application/json" },
