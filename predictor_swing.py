@@ -59,7 +59,6 @@ def get_prediction(symbol: str, data: pd.DataFrame, model_path: str):
     last_row = featured_data.iloc[[-1]].copy()
     last_row['sentiment_score'] = live_sentiment
     
-    # WICHTIG: Die Features müssen exakt denen aus dem ki_trainer_swing.py entsprechen
     features = ['sma_fast', 'sma_slow', 'rsi', 'macd_diff', 'atr', 'sentiment_score']
     
     last_row.dropna(subset=features, inplace=True)
@@ -71,11 +70,19 @@ def get_prediction(symbol: str, data: pd.DataFrame, model_path: str):
     prediction = model.predict(X_live)[0]
     signal_map = {1: 'Kaufen', -1: 'Verkaufen', 0: 'Halten'}
     
+    # --- KORREKTUR: Intelligente TP/SL Berechnung ---
     atr = X_live['atr'].iloc[0]
     last_close = data['close'].iloc[-1]
-    # Angepasste TP/SL-Ziele für die Swing-Strategie
-    take_profit = last_close + (2.5 * atr)
-    stop_loss = last_close - (1.5 * atr)
+    
+    if prediction == 1: # Kaufsignal
+        take_profit = last_close + (2.5 * atr)
+        stop_loss = last_close - (1.5 * atr)
+    elif prediction == -1: # Verkaufsignal
+        take_profit = last_close - (2.5 * atr)
+        stop_loss = last_close + (1.5 * atr)
+    else: # Halten-Signal
+        take_profit = 0
+        stop_loss = 0
     
     return {
         "signal": signal_map.get(prediction, "Unbekannt"),

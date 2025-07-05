@@ -59,6 +59,7 @@ def add_features(df: pd.DataFrame) -> pd.DataFrame:
     df['cci'] = ta.trend.cci(df['high'], df['low'], df['close'], window=20)
     return df
 
+# ERSETZE diese Funktion in predictor_daily.py
 def get_prediction(symbol: str, data: pd.DataFrame, model_path: str):
     """
     Trifft eine Vorhersage basierend auf den neuesten Daten und dem Live-Sentiment.
@@ -66,42 +67,41 @@ def get_prediction(symbol: str, data: pd.DataFrame, model_path: str):
     if not os.path.exists(model_path):
         return {"error": f"Modell {model_path} nicht gefunden."}
 
-    # 1. Modell laden
     model = joblib.load(model_path)
-    
-    # 2. Features für die neuesten Daten berechnen
     featured_data = add_features(data.copy())
-    
-    # 3. Live-Sentiment abrufen
     live_sentiment = get_live_sentiment(symbol)
     
-    # 4. Den letzten Datenpunkt (die aktuellste Kerze) für die Vorhersage vorbereiten
     last_row = featured_data.iloc[[-1]].copy()
     last_row['sentiment_score'] = live_sentiment
     
-    # 5. Sicherstellen, dass die Spaltenreihenfolge genau dem Trainings-Zustand entspricht
     features = [
         'sma_fast', 'sma_slow', 'rsi', 'macd_diff', 'bb_width', 
         'stoch_k', 'roc', 'atr', 'adx', 'cci', 
         'sentiment_score'
     ]
     
-    # Entferne alle Zeilen mit NaN-Werten in den relevanten Spalten
     last_row.dropna(subset=features, inplace=True)
     if last_row.empty:
         return {"error": "Nicht genügend Daten für eine Vorhersage nach Feature-Berechnung."}
 
     X_live = last_row[features]
     
-    # 6. Vorhersage treffen
     prediction = model.predict(X_live)[0]
     signal_map = {1: 'Kaufen', -1: 'Verkaufen', 0: 'Halten'}
     
-    # 7. Take-Profit und Stop-Loss berechnen
+    # --- KORREKTUR: Intelligente TP/SL Berechnung ---
     atr = X_live['atr'].iloc[0]
     last_close = data['close'].iloc[-1]
-    take_profit = last_close + (2 * atr)
-    stop_loss = last_close - (1 * atr)
+    
+    if prediction == 1: # Kaufsignal
+        take_profit = last_close + (2.0 * atr)
+        stop_loss = last_close - (1.0 * atr)
+    elif prediction == -1: # Verkaufsignal
+        take_profit = last_close - (2.0 * atr)
+        stop_loss = last_close + (1.0 * atr)
+    else: # Halten-Signal
+        take_profit = 0
+        stop_loss = 0
     
     return {
         "signal": signal_map.get(prediction, "Unbekannt"),
