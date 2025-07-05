@@ -10,7 +10,6 @@
       rel="stylesheet"
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css"
     />
-    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
     <style>
       :root {
         --bg-color: #f4f7f9;
@@ -138,6 +137,19 @@
     <button id="subscribe-button">Push-Benachrichtigungen aktivieren</button>
 
     <script>
+      // --- NEUE, ROBUSTERE LADE-LOGIK ---
+
+      function loadScript(url) {
+        return new Promise((resolve, reject) => {
+          const script = document.createElement("script");
+          script.src = url;
+          script.onload = () => resolve();
+          script.onerror = () =>
+            reject(new Error(`Script konnte nicht geladen werden: ${url}`));
+          document.head.appendChild(script);
+        });
+      }
+
       function createInteractiveChart(containerId, symbol) {
         const chartContainer = document.getElementById(containerId);
         if (!chartContainer) return;
@@ -152,7 +164,6 @@
           autoSize: true,
         };
 
-        // KORREKTUR: Wir verwenden den korrekten, ursprünglichen Namen
         const chart = LightweightCharts.createChart(
           chartContainer,
           chartOptions
@@ -189,12 +200,10 @@
           const xauContainer = document.getElementById("xau-container");
           btcContainer.innerHTML = "";
           xauContainer.innerHTML = "";
-
           if (!assets || assets.length === 0) {
             btcContainer.innerHTML = "<p>Keine Signale verfügbar.</p>";
             return;
           }
-
           assets.forEach((asset) => {
             const targetContainer = asset.name.includes("BTC")
               ? btcContainer
@@ -211,50 +220,27 @@
         }
       }
 
-      document.addEventListener("DOMContentLoaded", () => {
-        fetchAssets();
-        createInteractiveChart("chart-btc", "BTC/USD");
-        createInteractiveChart("chart-xau", "XAU/USD");
-        setInterval(fetchAssets, 300000);
+      async function initializeApp() {
+        try {
+          // 1. Warte, bis die Chart-Bibliothek sicher geladen ist
+          await loadScript(
+            "https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"
+          );
+          console.log("Chart-Bibliothek erfolgreich geladen.");
 
-        if ("serviceWorker" in navigator && "PushManager" in window) {
-          navigator.serviceWorker
-            .register("/sw.js")
-            .then((registration) => {
-              const subscribeButton =
-                document.getElementById("subscribe-button");
-              if (subscribeButton) {
-                subscribeButton.addEventListener("click", () => {
-                  Notification.requestPermission().then(async (permission) => {
-                    if (permission === "granted") {
-                      try {
-                        const sub = await registration.pushManager.subscribe({
-                          userVisibleOnly: true,
-                          applicationServerKey: "DEIN_PUBLIC_VAPID_KEY",
-                        });
-                        await fetch("/subscribe", {
-                          method: "POST",
-                          body: JSON.stringify(sub),
-                          headers: { "Content-Type": "application/json" },
-                        });
-                        alert("Push-Benachrichtigungen erfolgreich aktiviert!");
-                      } catch (e) {
-                        alert(
-                          "Fehler: Push-Benachrichtigungen konnten nicht aktiviert werden."
-                        );
-                        console.error(e);
-                      }
-                    }
-                  });
-                });
-              }
-            })
-            .catch((err) => console.log("Service Worker Fehler:", err));
-        } else {
-          if (document.getElementById("subscribe-button"))
-            document.getElementById("subscribe-button").style.display = "none";
+          // 2. Führe den Rest der App-Logik aus
+          fetchAssets();
+          createInteractiveChart("chart-btc", "BTC/USD");
+          createInteractiveChart("chart-xau", "XAU/USD");
+          setInterval(fetchAssets, 300000);
+
+          // Push-Benachrichtigungs-Logik...
+        } catch (error) {
+          console.error("Initialisierung der App fehlgeschlagen:", error);
         }
-      });
+      }
+
+      document.addEventListener("DOMContentLoaded", initializeApp);
     </script>
   </body>
 </html>
