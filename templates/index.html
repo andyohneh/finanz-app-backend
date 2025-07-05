@@ -3,13 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>KI Finanz-Signale</title>
+    <title>KI Finanz-Cockpit</title>
     <link rel="manifest" href="/manifest.json" />
     <link
       rel="stylesheet"
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css"
     />
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
     <style>
       :root {
         --bg-color: #f4f7f9;
@@ -27,18 +27,13 @@
         --text-color: #e2e8f0;
         --header-color: #63b3ed;
         --border-color: #4a5568;
-        --green: #68d391;
-        --red: #fc8181;
-        --grey: #a0aec0;
       }
       body {
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-          Helvetica, Arial, sans-serif;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto;
         background-color: var(--bg-color);
         color: var(--text-color);
         margin: 0;
         padding: 20px;
-        transition: background-color 0.3s, color 0.3s;
       }
       .header {
         display: flex;
@@ -70,11 +65,7 @@
         border-radius: 8px;
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         overflow: hidden;
-        transition: transform 0.2s;
         border-left: 5px solid var(--grey);
-      }
-      .card:hover {
-        transform: translateY(-5px);
       }
       .card.green {
         border-left-color: var(--green);
@@ -101,9 +92,6 @@
       .card.red .fas {
         color: var(--red);
       }
-      .card.grey .fas {
-        color: var(--grey);
-      }
       .card-body {
         padding: 0 20px 20px;
         display: grid;
@@ -118,115 +106,115 @@
         font-size: 0.8em;
         color: var(--grey);
         text-align: right;
-        background-color: var(--card-bg-color);
         border-top: 1px solid var(--border-color);
-      }
-      .error {
-        color: var(--red);
-        text-align: center;
       }
       .back-link {
         color: var(--header-color);
         text-decoration: none;
         font-weight: bold;
       }
+      /* NEU: Styles für die Chart-Container */
+      .chart-container {
+        width: 100%;
+        height: 400px;
+        margin-top: 20px;
+        border-radius: 8px;
+        overflow: hidden;
+      }
     </style>
   </head>
   <body>
     <div class="header">
-      <h1>KI Finanz-Signale</h1>
+      <h1>KI Finanz-Cockpit</h1>
       <a href="/dashboard" class="back-link">Zum Analyse-Dashboard</a>
     </div>
 
     <div class="asset-section">
       <h2>Bitcoin (BTC/USD)</h2>
+      <div class="chart-container" id="chart-btc"></div>
       <div class="container" id="btc-container"></div>
     </div>
 
     <div class="asset-section">
       <h2>Gold (XAU/USD)</h2>
+      <div class="chart-container" id="chart-xau"></div>
       <div class="container" id="xau-container"></div>
     </div>
 
     <button id="subscribe-button">Push-Benachrichtigungen aktivieren</button>
 
     <script>
-      async function fetchAssets() {
-        try {
-          const response = await fetch("/api/assets");
-          const assets = await response.json();
+        // --- NEUE FUNKTION ZUM ERSTELLEN INTERAKTIVER CHARTS ---
+        async function createInteractiveChart(containerId, symbol) {
+            const chartContainer = document.getElementById(containerId);
+            const chart = LightweightCharts.createChart(chartContainer, {
+                width: chartContainer.clientWidth,
+                height: 400,
+                layout: {
+                    background: { color: document.body.classList.contains('dark-mode') ? '#1a202c' : '#ffffff' },
+                    textColor: document.body.classList.contains('dark-mode') ? '#e2e8f0' : '#3d4852',
+                },
+                grid: {
+                    vertLines: { color: 'rgba(70, 130, 180, 0.2)' },
+                    horzLines: { color: 'rgba(70, 130, 180, 0.2)' },
+                },
+                timeScale: { timeVisible: true, secondsVisible: false },
+            });
 
-          // NEU: Wir holen uns beide Container
-          const btcContainer = document.getElementById("btc-container");
-          const xauContainer = document.getElementById("xau-container");
-          btcContainer.innerHTML = "";
-          xauContainer.innerHTML = "";
+            const candleSeries = chart.addCandlestickSeries({
+                upColor: '#2f855a', downColor: '#c53030',
+                borderDownColor: '#c53030', borderUpColor: '#2f855a',
+                wickDownColor: '#c53030', wickUpColor: '#2f855a',
+            });
 
-          if (assets.error) {
-            btcContainer.innerHTML = `<p class="error">${assets.error}</p>`;
-            return;
-          }
+            try {
+                const response = await fetch(`/historical-data/${symbol}`);
+                const data = await response.json();
+                candleSeries.setData(data);
+                chart.timeScale().fitContent();
+            } catch (error) {
+                console.error(`Fehler beim Laden der Chart-Daten für ${symbol}:`, error);
+            }
+        }
 
-          assets.forEach((asset) => {
-            // NEU: Wir entscheiden, in welchen Container die Karte kommt
-            const targetContainer = asset.name.includes("BTC")
-              ? btcContainer
-              : xauContainer;
+        async function fetchAssets() {
+            try {
+                const response = await fetch("/api/assets");
+                const assets = await response.json();
+                const btcContainer = document.getElementById("btc-container");
+                const xauContainer = document.getElementById("xau-container");
+                btcContainer.innerHTML = "";
+                xauContainer.innerHTML = "";
 
-            const card = document.createElement("div");
-            card.className = `card ${asset.color}`;
-            card.innerHTML = `
-                        <div class="card-header">
-                            <h3>${asset.name}</h3>
-                            <i class="fas ${asset.icon}"></i>
-                        </div>
+                assets.forEach((asset) => {
+                    const targetContainer = asset.name.includes('BTC') ? btcContainer : xauContainer;
+                    const card = document.createElement("div");
+                    card.className = `card ${asset.color}`;
+                    card.innerHTML = `
+                        <div class="card-header"><h3>${asset.name}</h3><i class="fas ${asset.icon}"></i></div>
                         <div class="card-body">
                             <p><strong>Signal:</strong> ${asset.signal}</p>
                             <p><strong>Einstiegspreis:</strong> ${asset.entry_price}</p>
                             <p><strong>Take Profit:</strong> ${asset.take_profit}</p>
                             <p><strong>Stop Loss:</strong> ${asset.stop_loss}</p>
                         </div>
-                        <div class="card-footer">
-                            Letzte Aktualisierung: ${asset.timestamp}
-                        </div>
-                    `;
-            targetContainer.appendChild(card);
-          });
-        } catch (error) {
-          console.error("Fehler beim Abrufen der Asset-Daten:", error);
-          document.getElementById("btc-container").innerHTML =
-            "<p class='error'>Fehler: Live-Signale konnten nicht geladen werden.</p>";
-        }
-      }
-
-      document.addEventListener("DOMContentLoaded", () => {
-        fetchAssets();
-        setInterval(fetchAssets, 300000); // 300000ms = 5 Minuten
-      });
-
-      // --- Push-Benachrichtigungs-Logik (unverändert) ---
-      document.addEventListener("DOMContentLoaded", () => {
-        if ("serviceWorker" in navigator && "PushManager" in window) {
-          async function subscribeUser() {
-            try {
-              const registration = await navigator.serviceWorker.ready;
-              const subscription = await registration.pushManager.subscribe({
-                userVisibleOnly: true,
-                applicationServerKey: "DEIN_PUBLIC_VAPID_KEY",
-              });
-              await fetch("/subscribe", {
-                method: "POST",
-                body: JSON.stringify(subscription),
-                headers: { "Content-Type": "application/json" },
-              });
-              alert("Push-Benachrichtigungen erfolgreich aktiviert!");
+                        <div class="card-footer">Letzte Aktualisierung: ${asset.timestamp}</div>`;
+                    targetContainer.appendChild(card);
+                });
             } catch (error) {
-              console.error("Fehler beim Abonnieren:", error);
-              alert(
-                "Fehler: Push-Benachrichtigungen konnten nicht aktiviert werden."
-              );
+                console.error("Fehler beim Abrufen der Asset-Daten:", error);
+                document.getElementById("btc-container").innerHTML = "<p class='error'>Fehler: Live-Signale konnten nicht geladen werden.</p>";
             }
-          }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchAssets();
+            setInterval(fetchAssets, 300000);
+
+            // NEU: Die interaktiven Charts initialisieren
+            createInteractiveChart('chart-btc', 'BTC/USD');
+            createInteractiveChart('chart-xau', 'XAU/USD');
+        });
 
           navigator.serviceWorker
             .register("/sw.js")

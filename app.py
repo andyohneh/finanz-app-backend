@@ -1,4 +1,3 @@
-# app.py (FINALE, KORRIGIERTE Platin-Version)
 import os
 import json
 from flask import Flask, jsonify, render_template, request, send_from_directory
@@ -24,27 +23,22 @@ CORS(app)
 
 @app.route('/')
 def index():
-    """Zeigt die Hauptseite (Live-Signale) an."""
+    """Zeigt die Hauptseite (Live-Signale & Cockpit) an."""
     return render_template('index.html')
 
 @app.route('/api/assets')
 def get_assets():
-    """
-    Ruft die Vorhersagen für alle drei Strategien ab und kombiniert sie.
-    (Dies ist die EINZIGE get_assets Funktion)
-    """
+    """Ruft die Vorhersagen für alle drei Strategien ab und kombiniert sie."""
     assets_data = []
     symbols = ['BTC/USD', 'XAU/USD']
     
     with engine.connect() as conn:
         for symbol in symbols:
-            print(f"Lade Daten für {symbol} für alle Predictoren...")
             query = text("SELECT * FROM historical_data_daily WHERE symbol = :symbol ORDER BY timestamp DESC LIMIT 200")
             df = pd.read_sql_query(query, conn, params={'symbol': symbol})
             df = df.sort_values(by='timestamp').reset_index(drop=True)
 
-            if df.empty or len(df) < 60:
-                print(f"Nicht genügend historische Daten für {symbol}.")
+            if df.empty or len(df) < 151: # Genug Daten für 150er SMA
                 continue
 
             predictors = {
@@ -54,13 +48,11 @@ def get_assets():
             }
 
             for strategy_name, predictor_module in predictors.items():
-                print(f"Rufe Vorhersage ab für: {symbol} - Strategie: {strategy_name}")
                 try:
                     model_path = predictor_module.MODEL_PATH_BTC if 'BTC' in symbol else predictor_module.MODEL_PATH_XAU
                     prediction = predictor_module.get_prediction(symbol, df.copy(), model_path)
 
                     if "error" in prediction:
-                        print(f"Fehler vom {strategy_name}-Predictor für {symbol}: {prediction['error']}")
                         continue
 
                     color = "grey"
@@ -83,13 +75,43 @@ def get_assets():
                         "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                     })
                 except Exception as e:
-                    print(f"Schwerer Fehler beim Ausführen des {strategy_name}-Predictors für {symbol}: {e}")
-
+                    print(f"Fehler beim Ausführen des {strategy_name}-Predictors für {symbol}: {e}")
     return jsonify(assets_data)
+
+# NEUE FUNKTION FÜR DIE INTERAKTIVEN CHARTS
+@app.route('/historical-data/<symbol>')
+def get_historical_data(symbol):
+    """Holt die historischen OHLC-Tages-Daten für die interaktiven Charts."""
+    db_symbol = symbol.split('(')[0].strip()
+    query = text("""
+        SELECT timestamp, open, high, low, close
+        FROM historical_data_daily
+        WHERE symbol = :symbol_param
+        ORDER BY timestamp ASC
+        LIMIT 200
+    """)
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(query, {"symbol_param": db_symbol}).fetchall()
+        
+        data_points = [
+            {
+                "time": row[0].strftime('%Y-%m-%d'),
+                "open": row[1],
+                "high": row[2],
+                "low": row[3],
+                "close": row[4]
+            }
+            for row in result
+        ]
+        return jsonify(data_points)
+    except Exception as e:
+        print(f"Fehler beim Laden der OHLC-Chart-Daten für {db_symbol}: {e}")
+        return jsonify([])
 
 @app.route('/dashboard')
 def dashboard():
-    """Analyse-Dashboard. HINWEIS: Benötigt eine 'backtest_results.json'."""
+    """Analyse-Dashboard."""
     results = {"daily": [], "swing": [], "genius": []}
     try:
         with open('backtest_results.json', 'r', encoding='utf-8') as f:
@@ -98,8 +120,7 @@ def dashboard():
         print(f"Warnung: Konnte 'backtest_results.json' nicht laden. Dashboard ist leer. Fehler: {e}")
     return render_template('dashboard.html', results=results)
 
-
-# --- ROUTEN FÜR SERVICE-WORKER & MANIFEST ---
+# ROUTEN FÜR SERVICE-WORKER & PUSH-BENACHRICHTIGUNGEN
 @app.route('/sw.js')
 def sw():
     return send_from_directory(app.static_folder, 'sw.js')
@@ -108,14 +129,11 @@ def sw():
 def manifest():
     return send_from_directory(app.static_folder, 'manifest.json')
 
-
-# --- ROUTEN FÜR PUSH-BENACHRICHTIGUNGEN ---
 @app.route('/subscribe', methods=['POST'])
 def subscribe():
     subscription_info = request.get_json()
     if not subscription_info:
         return jsonify({'error': 'Keine Subscription-Daten erhalten'}), 400
-    
     try:
         with engine.connect() as conn:
             stmt = insert(push_subscriptions).values(subscription_json=json.dumps(subscription_info))
@@ -126,9 +144,7 @@ def subscribe():
         print(f"Fehler beim Speichern der Subscription: {e}")
         return jsonify({'error': 'Fehler beim Speichern'}), 500
 
-# --- STARTPUNKT DER APP ---
+# STARTPUNKT DER APP
 if __name__ == '__main__':
-    # Der Port wird von Render automatisch über die Umgebungsvariable gesetzt
     port = int(os.environ.get('PORT', 5000))
-    # debug=False ist für den Live-Betrieb auf Render wichtig
     app.run(debug=False, host='0.0.0.0', port=port)
