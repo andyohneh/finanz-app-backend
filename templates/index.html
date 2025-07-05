@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>KI Finanz-Cockpit</title>
     <link rel="manifest" href="/manifest.json" />
+    <link rel="icon" href="/favicon.ico" />
     <link
       rel="stylesheet"
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css"
@@ -113,7 +114,6 @@
         text-decoration: none;
         font-weight: bold;
       }
-      /* NEU: Styles für die Chart-Container */
       .chart-container {
         width: 100%;
         height: 400px;
@@ -144,15 +144,11 @@
     <button id="subscribe-button">Push-Benachrichtigungen aktivieren</button>
 
     <script>
-      // Funktion zum Erstellen der interaktiven Charts
-      async function createInteractiveChart(containerId, symbol) {
+      function createInteractiveChart(containerId, symbol) {
         const chartContainer = document.getElementById(containerId);
-        // Sicherheits-Check, falls der Container nicht da ist
         if (!chartContainer) return;
 
-        const chart = LightweightCharts.createChart(chartContainer, {
-          width: chartContainer.clientWidth,
-          height: 400,
+        const chartOptions = {
           layout: {
             background: {
               color: document.body.classList.contains("dark-mode")
@@ -168,8 +164,13 @@
             horzLines: { color: "rgba(70, 130, 180, 0.2)" },
           },
           timeScale: { timeVisible: true, secondsVisible: false },
-        });
+          autoSize: true,
+        };
 
+        const chart = LightweightCharts.createChart(
+          chartContainer,
+          chartOptions
+        );
         const candleSeries = chart.addCandlestickSeries({
           upColor: "#2f855a",
           downColor: "#c53030",
@@ -179,20 +180,22 @@
           wickUpColor: "#2f855a",
         });
 
-        try {
-          const response = await fetch(`/historical-data/${symbol}`);
-          const data = await response.json();
-          candleSeries.setData(data);
-          chart.timeScale().fitContent();
-        } catch (error) {
-          console.error(
-            `Fehler beim Laden der Chart-Daten für ${symbol}:`,
-            error
+        fetch(`/historical-data/${symbol}`)
+          .then((response) => response.json())
+          .then((data) => {
+            if (data && data.length > 0) {
+              candleSeries.setData(data);
+              chart.timeScale().fitContent();
+            }
+          })
+          .catch((error) =>
+            console.error(
+              `Fehler beim Laden der Chart-Daten für ${symbol}:`,
+              error
+            )
           );
-        }
       }
 
-      // Funktion zum Abrufen und Anzeigen der KI-Signale
       async function fetchAssets() {
         try {
           const response = await fetch("/api/assets");
@@ -214,14 +217,14 @@
             const card = document.createElement("div");
             card.className = `card ${asset.color}`;
             card.innerHTML = `
-                    <div class="card-header"><h3>${asset.name}</h3><i class="fas ${asset.icon}"></i></div>
-                    <div class="card-body">
-                        <p><strong>Signal:</strong> ${asset.signal}</p>
-                        <p><strong>Einstiegspreis:</strong> ${asset.entry_price}</p>
-                        <p><strong>Take Profit:</strong> ${asset.take_profit}</p>
-                        <p><strong>Stop Loss:</strong> ${asset.stop_loss}</p>
-                    </div>
-                    <div class="card-footer">Letzte Aktualisierung: ${asset.timestamp}</div>`;
+                        <div class="card-header"><h3>${asset.name}</h3><i class="fas ${asset.icon}"></i></div>
+                        <div class="card-body">
+                            <p><strong>Signal:</strong> ${asset.signal}</p>
+                            <p><strong>Einstiegspreis:</strong> ${asset.entry_price}</p>
+                            <p><strong>Take Profit:</strong> ${asset.take_profit}</p>
+                            <p><strong>Stop Loss:</strong> ${asset.stop_loss}</p>
+                        </div>
+                        <div class="card-footer">Letzte Aktualisierung: ${asset.timestamp}</div>`;
             targetContainer.appendChild(card);
           });
         } catch (error) {
@@ -231,17 +234,13 @@
         }
       }
 
-      // Alles was nach dem Laden der Seite passieren soll, in einem Block
       document.addEventListener("DOMContentLoaded", () => {
-        // 1. Lade die Signale und Charts
         fetchAssets();
         createInteractiveChart("chart-btc", "BTC/USD");
         createInteractiveChart("chart-xau", "XAU/USD");
 
-        // 2. Richte das periodische Neuladen ein
-        setInterval(fetchAssets, 300000); // 5 Minuten
+        setInterval(fetchAssets, 300000);
 
-        // 3. Richte den Service Worker und Push-Benachrichtigungen ein
         if ("serviceWorker" in navigator && "PushManager" in window) {
           navigator.serviceWorker
             .register("/sw.js")
