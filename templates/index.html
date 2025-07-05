@@ -22,13 +22,6 @@
         --red: #c53030;
         --grey: #4a5568;
       }
-      body.dark-mode {
-        --bg-color: #1a202c;
-        --card-bg-color: #2d3748;
-        --text-color: #e2e8f0;
-        --header-color: #63b3ed;
-        --border-color: #4a5568;
-      }
       body {
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto;
         background-color: var(--bg-color);
@@ -121,6 +114,10 @@
         border-radius: 8px;
         overflow: hidden;
       }
+      .error {
+        color: var(--red);
+        text-align: center;
+      }
     </style>
   </head>
   <body>
@@ -128,19 +125,16 @@
       <h1>KI Finanz-Cockpit</h1>
       <a href="/dashboard" class="back-link">Zum Analyse-Dashboard</a>
     </div>
-
     <div class="asset-section">
       <h2>Bitcoin (BTC/USD)</h2>
       <div class="chart-container" id="chart-btc"></div>
       <div class="container" id="btc-container"></div>
     </div>
-
     <div class="asset-section">
       <h2>Gold (XAU/USD)</h2>
       <div class="chart-container" id="chart-xau"></div>
       <div class="container" id="xau-container"></div>
     </div>
-
     <button id="subscribe-button">Push-Benachrichtigungen aktivieren</button>
 
     <script>
@@ -149,16 +143,7 @@
         if (!chartContainer) return;
 
         const chartOptions = {
-          layout: {
-            background: {
-              color: document.body.classList.contains("dark-mode")
-                ? "#1a202c"
-                : "#ffffff",
-            },
-            textColor: document.body.classList.contains("dark-mode")
-              ? "#e2e8f0"
-              : "#3d4852",
-          },
+          layout: { background: { color: "#ffffff" }, textColor: "#3d4852" },
           grid: {
             vertLines: { color: "rgba(70, 130, 180, 0.2)" },
             horzLines: { color: "rgba(70, 130, 180, 0.2)" },
@@ -174,10 +159,9 @@
         const candleSeries = chart.addCandlestickSeries({
           upColor: "#2f855a",
           downColor: "#c53030",
-          borderDownColor: "#c53030",
-          borderUpColor: "#2f855a",
-          wickDownColor: "#c53030",
+          borderVisible: false,
           wickUpColor: "#2f855a",
+          wickDownColor: "#c53030",
         });
 
         fetch(`/historical-data/${symbol}`)
@@ -205,8 +189,8 @@
           btcContainer.innerHTML = "";
           xauContainer.innerHTML = "";
 
-          if (assets.error) {
-            btcContainer.innerHTML = `<p class="error">${assets.error}</p>`;
+          if (!assets || assets.length === 0) {
+            btcContainer.innerHTML = "<p>Keine Signale verfügbar.</p>";
             return;
           }
 
@@ -216,15 +200,7 @@
               : xauContainer;
             const card = document.createElement("div");
             card.className = `card ${asset.color}`;
-            card.innerHTML = `
-                        <div class="card-header"><h3>${asset.name}</h3><i class="fas ${asset.icon}"></i></div>
-                        <div class="card-body">
-                            <p><strong>Signal:</strong> ${asset.signal}</p>
-                            <p><strong>Einstiegspreis:</strong> ${asset.entry_price}</p>
-                            <p><strong>Take Profit:</strong> ${asset.take_profit}</p>
-                            <p><strong>Stop Loss:</strong> ${asset.stop_loss}</p>
-                        </div>
-                        <div class="card-footer">Letzte Aktualisierung: ${asset.timestamp}</div>`;
+            card.innerHTML = `<div class="card-header"><h3>${asset.name}</h3><i class="fas ${asset.icon}"></i></div><div class="card-body"><p><strong>Signal:</strong> ${asset.signal}</p><p><strong>Einstiegspreis:</strong> ${asset.entry_price}</p><p><strong>Take Profit:</strong> ${asset.take_profit}</p><p><strong>Stop Loss:</strong> ${asset.stop_loss}</p></div><div class="card-footer">Letzte Aktualisierung: ${asset.timestamp}</div>`;
             targetContainer.appendChild(card);
           });
         } catch (error) {
@@ -238,48 +214,44 @@
         fetchAssets();
         createInteractiveChart("chart-btc", "BTC/USD");
         createInteractiveChart("chart-xau", "XAU/USD");
-
         setInterval(fetchAssets, 300000);
 
         if ("serviceWorker" in navigator && "PushManager" in window) {
           navigator.serviceWorker
             .register("/sw.js")
             .then((registration) => {
-              console.log("Service Worker (Postbote) registriert.");
               const subscribeButton =
                 document.getElementById("subscribe-button");
-              if (!subscribeButton) return;
-
-              subscribeButton.addEventListener("click", () => {
-                Notification.requestPermission().then(async (permission) => {
-                  if (permission === "granted") {
-                    try {
-                      const subscription =
-                        await registration.pushManager.subscribe({
+              if (subscribeButton) {
+                subscribeButton.addEventListener("click", () => {
+                  Notification.requestPermission().then(async (permission) => {
+                    if (permission === "granted") {
+                      try {
+                        const sub = await registration.pushManager.subscribe({
                           userVisibleOnly: true,
-                          applicationServerKey: "DEIN_PUBLIC_VAPID_KEY", // WICHTIG: Ersetzen
+                          applicationServerKey: "DEIN_PUBLIC_VAPID_KEY",
                         });
-                      await fetch("/subscribe", {
-                        method: "POST",
-                        body: JSON.stringify(subscription),
-                        headers: { "Content-Type": "application/json" },
-                      });
-                      alert("Push-Benachrichtigungen erfolgreich aktiviert!");
-                    } catch (error) {
-                      console.error("Fehler beim Abonnieren:", error);
-                      alert(
-                        "Fehler: Push-Benachrichtigungen konnten nicht aktiviert werden."
-                      );
+                        await fetch("/subscribe", {
+                          method: "POST",
+                          body: JSON.stringify(sub),
+                          headers: { "Content-Type": "application/json" },
+                        });
+                        alert("Push-Benachrichtigungen erfolgreich aktiviert!");
+                      } catch (e) {
+                        alert(
+                          "Fehler: Push-Benachrichtigungen konnten nicht aktiviert werden."
+                        );
+                        console.error(e);
+                      }
                     }
-                  }
+                  });
                 });
-              });
+              }
             })
             .catch((err) => console.log("Service Worker Fehler:", err));
         } else {
-          console.warn("Push Messaging wird nicht unterstützt.");
-          const subscribeButton = document.getElementById("subscribe-button");
-          if (subscribeButton) subscribeButton.style.display = "none";
+          if (document.getElementById("subscribe-button"))
+            document.getElementById("subscribe-button").style.display = "none";
         }
       });
     </script>
