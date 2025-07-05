@@ -27,5 +27,18 @@
             "Anzahl_Trades": 402
         }
     ],
-    "genius": []
+    "genius": [
+        {
+            "Symbol": "BTC/USD",
+            "Gesamtrendite_%": 246019328.27,
+            "Gewinnrate_%": 64.37,
+            "Anzahl_Trades": 334
+        },
+        {
+            "Symbol": "XAU/USD",
+            "Gesamtrendite_%": 64420.98,
+            "Gewinnrate_%": 63.44,
+            "Anzahl_Trades": 413
+        }
+    ]
 }
