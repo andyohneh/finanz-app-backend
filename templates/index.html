@@ -20,9 +20,6 @@
         --green: #2f855a;
         --red: #c53030;
         --grey: #4a5568;
-        --green-card: #c6f6d5;
-        --red-card: #fed7d7;
-        --grey-card: #e2e8f0;
       }
       body.dark-mode {
         --bg-color: #1a202c;
@@ -33,9 +30,6 @@
         --green: #68d391;
         --red: #fc8181;
         --grey: #a0aec0;
-        --green-card: #2f855a;
-        --red-card: #9b2c2c;
-        --grey-card: #4a5568;
       }
       body {
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
@@ -50,13 +44,21 @@
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin-bottom: 20px;
+        margin-bottom: 30px;
         padding-bottom: 10px;
         border-bottom: 2px solid var(--border-color);
       }
       .header h1 {
         color: var(--header-color);
         margin: 0;
+      }
+      .asset-section {
+        margin-bottom: 40px;
+      }
+      .asset-section h2 {
+        color: var(--header-color);
+        border-bottom: 1px solid var(--border-color);
+        padding-bottom: 10px;
       }
       .container {
         display: grid;
@@ -69,29 +71,24 @@
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         overflow: hidden;
         transition: transform 0.2s;
+        border-left: 5px solid var(--grey);
       }
       .card:hover {
         transform: translateY(-5px);
       }
       .card.green {
-        border-left: 5px solid var(--green);
+        border-left-color: var(--green);
       }
       .card.red {
-        border-left: 5px solid var(--red);
+        border-left-color: var(--red);
       }
-      .card.grey {
-        border-left: 5px solid var(--grey);
-      }
-
       .card-header {
         display: flex;
         justify-content: space-between;
         align-items: center;
         padding: 15px 20px;
-        background-color: var(--card-bg-color);
-        border-bottom: 1px solid var(--border-color);
       }
-      .card-header h2 {
+      .card-header h3 {
         margin: 0;
         font-size: 1.2em;
       }
@@ -107,9 +104,8 @@
       .card.grey .fas {
         color: var(--grey);
       }
-
       .card-body {
-        padding: 20px;
+        padding: 0 20px 20px;
         display: grid;
         grid-template-columns: 1fr 1fr;
         gap: 10px;
@@ -129,38 +125,59 @@
         color: var(--red);
         text-align: center;
       }
+      .back-link {
+        color: var(--header-color);
+        text-decoration: none;
+        font-weight: bold;
+      }
     </style>
   </head>
   <body>
     <div class="header">
       <h1>KI Finanz-Signale</h1>
-      <a href="/dashboard">Zum Analyse-Dashboard</a>
+      <a href="/dashboard" class="back-link">Zum Analyse-Dashboard</a>
     </div>
 
-    <div class="container" id="assets-container"></div>
+    <div class="asset-section">
+      <h2>Bitcoin (BTC/USD)</h2>
+      <div class="container" id="btc-container"></div>
+    </div>
+
+    <div class="asset-section">
+      <h2>Gold (XAU/USD)</h2>
+      <div class="container" id="xau-container"></div>
+    </div>
 
     <button id="subscribe-button">Push-Benachrichtigungen aktivieren</button>
 
     <script>
-      // Diese Funktion holt die Live-Signale vom Server und zeigt sie an
       async function fetchAssets() {
         try {
           const response = await fetch("/api/assets");
           const assets = await response.json();
-          const container = document.getElementById("assets-container");
-          container.innerHTML = ""; // Leere den Container vor dem Neuzeichnen
+
+          // NEU: Wir holen uns beide Container
+          const btcContainer = document.getElementById("btc-container");
+          const xauContainer = document.getElementById("xau-container");
+          btcContainer.innerHTML = "";
+          xauContainer.innerHTML = "";
 
           if (assets.error) {
-            container.innerHTML = `<p class="error">${assets.error}</p>`;
+            btcContainer.innerHTML = `<p class="error">${assets.error}</p>`;
             return;
           }
 
           assets.forEach((asset) => {
+            // NEU: Wir entscheiden, in welchen Container die Karte kommt
+            const targetContainer = asset.name.includes("BTC")
+              ? btcContainer
+              : xauContainer;
+
             const card = document.createElement("div");
             card.className = `card ${asset.color}`;
             card.innerHTML = `
                         <div class="card-header">
-                            <h2>${asset.name}</h2>
+                            <h3>${asset.name}</h3>
                             <i class="fas ${asset.icon}"></i>
                         </div>
                         <div class="card-body">
@@ -173,23 +190,21 @@
                             Letzte Aktualisierung: ${asset.timestamp}
                         </div>
                     `;
-            container.appendChild(card);
+            targetContainer.appendChild(card);
           });
         } catch (error) {
           console.error("Fehler beim Abrufen der Asset-Daten:", error);
-          const container = document.getElementById("assets-container");
-          container.innerHTML =
+          document.getElementById("btc-container").innerHTML =
             "<p class='error'>Fehler: Live-Signale konnten nicht geladen werden.</p>";
         }
       }
 
-      // Führe fetchAssets sofort aus und dann alle 5 Minuten
       document.addEventListener("DOMContentLoaded", () => {
         fetchAssets();
         setInterval(fetchAssets, 300000); // 300000ms = 5 Minuten
       });
 
-      // --- LOGIK FÜR PUSH-BENACHRICHTIGUNGEN & SERVICE WORKER ---
+      // --- Push-Benachrichtigungs-Logik (unverändert) ---
       document.addEventListener("DOMContentLoaded", () => {
         if ("serviceWorker" in navigator && "PushManager" in window) {
           async function subscribeUser() {
@@ -197,7 +212,6 @@
               const registration = await navigator.serviceWorker.ready;
               const subscription = await registration.pushManager.subscribe({
                 userVisibleOnly: true,
-                // Ersetze diesen Key mit deinem Public VAPID Key
                 applicationServerKey: "DEIN_PUBLIC_VAPID_KEY",
               });
               await fetch("/subscribe", {
