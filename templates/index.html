@@ -144,93 +144,137 @@
     <button id="subscribe-button">Push-Benachrichtigungen aktivieren</button>
 
     <script>
-        // --- NEUE FUNKTION ZUM ERSTELLEN INTERAKTIVER CHARTS ---
-        async function createInteractiveChart(containerId, symbol) {
-            const chartContainer = document.getElementById(containerId);
-            const chart = LightweightCharts.createChart(chartContainer, {
-                width: chartContainer.clientWidth,
-                height: 400,
-                layout: {
-                    background: { color: document.body.classList.contains('dark-mode') ? '#1a202c' : '#ffffff' },
-                    textColor: document.body.classList.contains('dark-mode') ? '#e2e8f0' : '#3d4852',
-                },
-                grid: {
-                    vertLines: { color: 'rgba(70, 130, 180, 0.2)' },
-                    horzLines: { color: 'rgba(70, 130, 180, 0.2)' },
-                },
-                timeScale: { timeVisible: true, secondsVisible: false },
-            });
+      // Funktion zum Erstellen der interaktiven Charts
+      async function createInteractiveChart(containerId, symbol) {
+        const chartContainer = document.getElementById(containerId);
+        // Sicherheits-Check, falls der Container nicht da ist
+        if (!chartContainer) return;
 
-            const candleSeries = chart.addCandlestickSeries({
-                upColor: '#2f855a', downColor: '#c53030',
-                borderDownColor: '#c53030', borderUpColor: '#2f855a',
-                wickDownColor: '#c53030', wickUpColor: '#2f855a',
-            });
-
-            try {
-                const response = await fetch(`/historical-data/${symbol}`);
-                const data = await response.json();
-                candleSeries.setData(data);
-                chart.timeScale().fitContent();
-            } catch (error) {
-                console.error(`Fehler beim Laden der Chart-Daten für ${symbol}:`, error);
-            }
-        }
-
-        async function fetchAssets() {
-            try {
-                const response = await fetch("/api/assets");
-                const assets = await response.json();
-                const btcContainer = document.getElementById("btc-container");
-                const xauContainer = document.getElementById("xau-container");
-                btcContainer.innerHTML = "";
-                xauContainer.innerHTML = "";
-
-                assets.forEach((asset) => {
-                    const targetContainer = asset.name.includes('BTC') ? btcContainer : xauContainer;
-                    const card = document.createElement("div");
-                    card.className = `card ${asset.color}`;
-                    card.innerHTML = `
-                        <div class="card-header"><h3>${asset.name}</h3><i class="fas ${asset.icon}"></i></div>
-                        <div class="card-body">
-                            <p><strong>Signal:</strong> ${asset.signal}</p>
-                            <p><strong>Einstiegspreis:</strong> ${asset.entry_price}</p>
-                            <p><strong>Take Profit:</strong> ${asset.take_profit}</p>
-                            <p><strong>Stop Loss:</strong> ${asset.stop_loss}</p>
-                        </div>
-                        <div class="card-footer">Letzte Aktualisierung: ${asset.timestamp}</div>`;
-                    targetContainer.appendChild(card);
-                });
-            } catch (error) {
-                console.error("Fehler beim Abrufen der Asset-Daten:", error);
-                document.getElementById("btc-container").innerHTML = "<p class='error'>Fehler: Live-Signale konnten nicht geladen werden.</p>";
-            }
-        }
-
-        document.addEventListener('DOMContentLoaded', () => {
-            fetchAssets();
-            setInterval(fetchAssets, 300000);
-
-            // NEU: Die interaktiven Charts initialisieren
-            createInteractiveChart('chart-btc', 'BTC/USD');
-            createInteractiveChart('chart-xau', 'XAU/USD');
+        const chart = LightweightCharts.createChart(chartContainer, {
+          width: chartContainer.clientWidth,
+          height: 400,
+          layout: {
+            background: {
+              color: document.body.classList.contains("dark-mode")
+                ? "#1a202c"
+                : "#ffffff",
+            },
+            textColor: document.body.classList.contains("dark-mode")
+              ? "#e2e8f0"
+              : "#3d4852",
+          },
+          grid: {
+            vertLines: { color: "rgba(70, 130, 180, 0.2)" },
+            horzLines: { color: "rgba(70, 130, 180, 0.2)" },
+          },
+          timeScale: { timeVisible: true, secondsVisible: false },
         });
 
+        const candleSeries = chart.addCandlestickSeries({
+          upColor: "#2f855a",
+          downColor: "#c53030",
+          borderDownColor: "#c53030",
+          borderUpColor: "#2f855a",
+          wickDownColor: "#c53030",
+          wickUpColor: "#2f855a",
+        });
+
+        try {
+          const response = await fetch(`/historical-data/${symbol}`);
+          const data = await response.json();
+          candleSeries.setData(data);
+          chart.timeScale().fitContent();
+        } catch (error) {
+          console.error(
+            `Fehler beim Laden der Chart-Daten für ${symbol}:`,
+            error
+          );
+        }
+      }
+
+      // Funktion zum Abrufen und Anzeigen der KI-Signale
+      async function fetchAssets() {
+        try {
+          const response = await fetch("/api/assets");
+          const assets = await response.json();
+          const btcContainer = document.getElementById("btc-container");
+          const xauContainer = document.getElementById("xau-container");
+          btcContainer.innerHTML = "";
+          xauContainer.innerHTML = "";
+
+          if (assets.error) {
+            btcContainer.innerHTML = `<p class="error">${assets.error}</p>`;
+            return;
+          }
+
+          assets.forEach((asset) => {
+            const targetContainer = asset.name.includes("BTC")
+              ? btcContainer
+              : xauContainer;
+            const card = document.createElement("div");
+            card.className = `card ${asset.color}`;
+            card.innerHTML = `
+                    <div class="card-header"><h3>${asset.name}</h3><i class="fas ${asset.icon}"></i></div>
+                    <div class="card-body">
+                        <p><strong>Signal:</strong> ${asset.signal}</p>
+                        <p><strong>Einstiegspreis:</strong> ${asset.entry_price}</p>
+                        <p><strong>Take Profit:</strong> ${asset.take_profit}</p>
+                        <p><strong>Stop Loss:</strong> ${asset.stop_loss}</p>
+                    </div>
+                    <div class="card-footer">Letzte Aktualisierung: ${asset.timestamp}</div>`;
+            targetContainer.appendChild(card);
+          });
+        } catch (error) {
+          console.error("Fehler beim Abrufen der Asset-Daten:", error);
+          document.getElementById("btc-container").innerHTML =
+            "<p class='error'>Fehler: Live-Signale konnten nicht geladen werden.</p>";
+        }
+      }
+
+      // Alles was nach dem Laden der Seite passieren soll, in einem Block
+      document.addEventListener("DOMContentLoaded", () => {
+        // 1. Lade die Signale und Charts
+        fetchAssets();
+        createInteractiveChart("chart-btc", "BTC/USD");
+        createInteractiveChart("chart-xau", "XAU/USD");
+
+        // 2. Richte das periodische Neuladen ein
+        setInterval(fetchAssets, 300000); // 5 Minuten
+
+        // 3. Richte den Service Worker und Push-Benachrichtigungen ein
+        if ("serviceWorker" in navigator && "PushManager" in window) {
           navigator.serviceWorker
             .register("/sw.js")
             .then((registration) => {
               console.log("Service Worker (Postbote) registriert.");
               const subscribeButton =
                 document.getElementById("subscribe-button");
-              if (subscribeButton) {
-                subscribeButton.addEventListener("click", () => {
-                  Notification.requestPermission().then((permission) => {
-                    if (permission === "granted") {
-                      subscribeUser();
+              if (!subscribeButton) return;
+
+              subscribeButton.addEventListener("click", () => {
+                Notification.requestPermission().then(async (permission) => {
+                  if (permission === "granted") {
+                    try {
+                      const subscription =
+                        await registration.pushManager.subscribe({
+                          userVisibleOnly: true,
+                          applicationServerKey: "DEIN_PUBLIC_VAPID_KEY", // WICHTIG: Ersetzen
+                        });
+                      await fetch("/subscribe", {
+                        method: "POST",
+                        body: JSON.stringify(subscription),
+                        headers: { "Content-Type": "application/json" },
+                      });
+                      alert("Push-Benachrichtigungen erfolgreich aktiviert!");
+                    } catch (error) {
+                      console.error("Fehler beim Abonnieren:", error);
+                      alert(
+                        "Fehler: Push-Benachrichtigungen konnten nicht aktiviert werden."
+                      );
                     }
-                  });
+                  }
                 });
-              }
+              });
             })
             .catch((err) => console.log("Service Worker Fehler:", err));
         } else {
