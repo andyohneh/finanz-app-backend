@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>KI Finanz-Cockpit</title>
     <link rel="manifest" href="/manifest.json" />
-    <link rel="icon" href="/favicon.ico" />
+    <link rel="icon" href="/icon-192.png" />
     <link
       rel="stylesheet"
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css"
@@ -140,57 +140,45 @@
     <script>
       function createInteractiveChart(containerId, symbol) {
         const chartContainer = document.getElementById(containerId);
-        if (!chartContainer) {
-          console.error(
-            `Chart-Container mit der ID '${containerId}' nicht gefunden!`
-          );
-          return;
-        }
+        if (!chartContainer) return;
 
-        // --- DIAGNOSE-SCHRITT 1 ---
-        console.log(
-          "Versuche Chart zu erstellen. Das LightweightCharts-Objekt ist:",
-          LightweightCharts
+        const chartOptions = {
+          layout: { background: { color: "#ffffff" }, textColor: "#3d4852" },
+          grid: {
+            vertLines: { color: "rgba(70, 130, 180, 0.2)" },
+            horzLines: { color: "rgba(70, 130, 180, 0.2)" },
+          },
+          timeScale: { timeVisible: true, secondsVisible: false },
+          autoSize: true,
+        };
+
+        // KORREKTUR: Wir verwenden den korrekten Namen aus der Standalone-Bibliothek
+        const chart = UmdLightweightCharts.createChart(
+          chartContainer,
+          chartOptions
         );
+        const candleSeries = chart.addCandlestickSeries({
+          upColor: "#2f855a",
+          downColor: "#c53030",
+          borderVisible: false,
+          wickUpColor: "#2f855a",
+          wickDownColor: "#c53030",
+        });
 
-        try {
-          const chart = LightweightCharts.createChart(chartContainer, {
-            width: chartContainer.clientWidth,
-            height: 400,
-          });
-
-          // --- DIAGNOSE-SCHRITT 2 ---
-          console.log("Chart-Objekt für " + symbol + " erstellt:", chart);
-
-          if (typeof chart.addCandlestickSeries !== "function") {
+        fetch(`/historical-data/${symbol}`)
+          .then((response) => response.json())
+          .then((data) => {
+            if (data && data.length > 0) {
+              candleSeries.setData(data);
+              chart.timeScale().fitContent();
+            }
+          })
+          .catch((error) =>
             console.error(
-              "FEHLER: Das erstellte Chart-Objekt hat keine 'addCandlestickSeries'-Funktion. Das ist das Problem!"
-            );
-            return; // Stoppe hier, um weitere Fehler zu vermeiden
-          }
-
-          const candleSeries = chart.addCandlestickSeries();
-
-          fetch(`/historical-data/${symbol}`)
-            .then((response) => response.json())
-            .then((data) => {
-              if (data && data.length > 0) {
-                candleSeries.setData(data);
-                chart.timeScale().fitContent();
-              }
-            })
-            .catch((error) =>
-              console.error(
-                `Fehler beim Laden der Chart-Daten für ${symbol}:`,
-                error
-              )
-            );
-        } catch (e) {
-          console.error(
-            `Ein schwerer Fehler ist bei der Chart-Erstellung für ${symbol} aufgetreten:`,
-            e
+              `Fehler beim Laden der Chart-Daten für ${symbol}:`,
+              error
+            )
           );
-        }
       }
 
       async function fetchAssets() {
@@ -229,7 +217,43 @@
         createInteractiveChart("chart-xau", "XAU/USD");
         setInterval(fetchAssets, 300000);
 
-        // Push-Logik bleibt hier...
+        if ("serviceWorker" in navigator && "PushManager" in window) {
+          navigator.serviceWorker
+            .register("/sw.js")
+            .then((registration) => {
+              const subscribeButton =
+                document.getElementById("subscribe-button");
+              if (subscribeButton) {
+                subscribeButton.addEventListener("click", () => {
+                  Notification.requestPermission().then(async (permission) => {
+                    if (permission === "granted") {
+                      try {
+                        const sub = await registration.pushManager.subscribe({
+                          userVisibleOnly: true,
+                          applicationServerKey: "DEIN_PUBLIC_VAPID_KEY",
+                        });
+                        await fetch("/subscribe", {
+                          method: "POST",
+                          body: JSON.stringify(sub),
+                          headers: { "Content-Type": "application/json" },
+                        });
+                        alert("Push-Benachrichtigungen erfolgreich aktiviert!");
+                      } catch (e) {
+                        alert(
+                          "Fehler: Push-Benachrichtigungen konnten nicht aktiviert werden."
+                        );
+                        console.error(e);
+                      }
+                    }
+                  });
+                });
+              }
+            })
+            .catch((err) => console.log("Service Worker Fehler:", err));
+        } else {
+          if (document.getElementById("subscribe-button"))
+            document.getElementById("subscribe-button").style.display = "none";
+        }
       });
     </script>
   </body>
