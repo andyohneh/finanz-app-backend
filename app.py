@@ -92,8 +92,11 @@ def sw(): return send_from_directory(app.static_folder, 'sw.js')
 @app.route('/manifest.json')
 def manifest(): return send_from_directory(app.static_folder, 'manifest.json')
 
-@app.route('/favicon.ico')
-def favicon(): return send_from_directory(app.static_folder, 'favicon.ico')
+# ERSETZE die alte favicon-Route in app.py
+
+@app.route('/icon-192.png')
+def favicon():
+    return send_from_directory(app.static_folder, 'icon-192.png')
 
 # --- ROUTE FÜR PUSH-BENACHRICHTIGUNGEN ---
 @app.route('/subscribe', methods=['POST'])
