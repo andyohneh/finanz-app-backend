@@ -1,4 +1,5 @@
 # app.py (Finale Version für ApexCharts)
+# Version 2.0 - Letzter Fix für Render
 import os
 import json
 from flask import Flask, jsonify, render_template, request, send_from_directory
