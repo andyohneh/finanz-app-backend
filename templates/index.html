@@ -25,7 +25,8 @@
       rel="stylesheet"
       href="{{ url_for('static', filename='css/style.css') }}"
     />
-    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+
+    <script src="{{ url_for('static', filename='js/lightweight-charts.standalone.production.js') }}"></script>
   </head>
   <body>
     <div class="container">
@@ -68,11 +69,8 @@
         const chartContainer = document.getElementById("chart-container");
         const chartAssetTitle = document.getElementById("chart-asset-title");
 
-        // Diese Variable wird die Chart-Instanz halten.
-        // Wichtig: Sie wird nur hier deklariert.
         let chart = null;
 
-        // ----- Live-Signale laden -----
         function fetchSignalData() {
           fetch("/api/assets")
             .then((response) => {
@@ -81,7 +79,7 @@
               return response.json();
             })
             .then((data) => {
-              signalCardsContainer.innerHTML = ""; // Leeren für Refresh
+              signalCardsContainer.innerHTML = "";
               data.forEach((asset) => {
                 const card = document.createElement("div");
                 card.className = `signal-card ${asset.color}`;
@@ -100,7 +98,6 @@
                                 <small>Letztes Update: ${asset.timestamp}</small>
                             </div>
                         `;
-                // Event Listener, um das Chart-Modal zu öffnen
                 card.addEventListener("click", () =>
                   openChartModal(asset.asset)
                 );
@@ -114,18 +111,15 @@
             });
         }
 
-        // Funktion, um den Chart im Modal zu öffnen und Daten zu laden
         function openChartModal(symbol) {
           chartAssetTitle.textContent = `${symbol} Chart (Täglich)`;
           modal.style.display = "block";
 
-          // Bestehenden Chart sicher entfernen, falls das Modal erneut geöffnet wird
           if (chart) {
             chart.remove();
             chart = null;
           }
 
-          // Lade-Spinner anzeigen
           chartContainer.innerHTML = '<div class="loader"></div>';
 
           fetch(`/historical-data/${symbol}`)
@@ -135,14 +129,13 @@
               return response.json();
             })
             .then((data) => {
-              chartContainer.innerHTML = ""; // Lade-Spinner entfernen
+              chartContainer.innerHTML = "";
               if (!data || data.length === 0 || data.error) {
                 chartContainer.innerHTML =
                   '<p class="error-msg">Keine Chart-Daten verfügbar.</p>';
                 return;
               }
 
-              // Erstelle den Chart hier und weise ihn der 'chart'-Variable zu
               chart = LightweightCharts.createChart(chartContainer, {
                 width: chartContainer.clientWidth,
                 height: 400,
@@ -156,7 +149,6 @@
                 timeScale: { borderColor: "#444" },
               });
 
-              // Füge die Candlestick-Serie hinzu
               const candlestickSeries = chart.addCandlestickSeries({
                 upColor: "#26a69a",
                 downColor: "#ef5350",
@@ -176,9 +168,6 @@
             });
         }
 
-        // --- Event Listeners ---
-
-        // Modal-Schließ-Logik
         closeModal.onclick = () => {
           modal.style.display = "none";
         };
@@ -186,14 +175,12 @@
           if (event.target == modal) modal.style.display = "none";
         };
 
-        // Event Listener für Fenstergrößenänderung, um den Chart anzupassen
         window.addEventListener("resize", () => {
           if (chart && chartContainer.clientWidth > 0) {
             chart.resize(chartContainer.clientWidth, 400);
           }
         });
 
-        // Initiale Daten laden und dann alle 60 Sekunden aktualisieren
         fetchSignalData();
         setInterval(fetchSignalData, 60000);
       });
