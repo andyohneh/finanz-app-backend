@@ -112,10 +112,6 @@
         min-height: 400px;
         margin-top: 20px;
       }
-      .error {
-        color: var(--red);
-        text-align: center;
-      }
     </style>
   </head>
   <body>
@@ -133,7 +129,6 @@
       <div class="chart-container" id="chart-xau"></div>
       <div class="container" id="xau-container"></div>
     </div>
-    <button id="subscribe-button">Push-Benachrichtigungen aktivieren</button>
 
     <script>
       async function createApexChart(containerId, symbol) {
@@ -201,7 +196,6 @@
         createApexChart("chart-btc", "BTC/USD");
         createApexChart("chart-xau", "XAU/USD");
         setInterval(fetchAssets, 300000);
-        // Push-Logik...
       });
     </script>
   </body>
