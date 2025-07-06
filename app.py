@@ -1,4 +1,5 @@
 # app.py (Finale Version mit Schrägstrich-Fix)
+import pytz
 import os
 import json
 from flask import Flask, jsonify, render_template, request, send_from_directory
@@ -26,6 +27,8 @@ def index():
 def get_assets():
     assets_data = []
     symbols = ['BTC/USD', 'XAU/USD']
+    german_tz = pytz.timezone('Europe/Berlin') # Definiere die deutsche Zeitzone
+
     with engine.connect() as conn:
         for symbol in symbols:
             query = text("SELECT * FROM historical_data_daily WHERE symbol = :symbol ORDER BY timestamp DESC LIMIT 200")
@@ -43,12 +46,15 @@ def get_assets():
                     color, icon = "grey", "fa-minus-circle"
                     if prediction['signal'] == 'Kaufen': color, icon = "green", "fa-arrow-up"
                     elif prediction['signal'] == 'Verkaufen': color, icon = "red", "fa-arrow-down"
+                    
+                    # KORREKTUR: Zeitstempel in die deutsche Zeitzone umrechnen
+                    now_in_germany = datetime.now(german_tz)
 
                     assets_data.append({
                         "name": f"{symbol} ({strategy_name})", "signal": prediction.get('signal'),
                         "entry_price": f"{prediction.get('entry_price'):.2f}", "take_profit": f"{prediction.get('take_profit'):.2f}",
                         "stop_loss": f"{prediction.get('stop_loss'):.2f}", "color": color, "icon": icon,
-                        "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                        "timestamp": now_in_germany.strftime('%Y-%m-%d %H:%M:%S') # Formatiere die neue Zeit
                     })
                 except Exception as e:
                     print(f"Fehler beim Ausführen des {strategy_name}-Predictors für {symbol}: {e}")
