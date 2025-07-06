@@ -39,9 +39,6 @@
         </div>
         <div class="header-actions">
           <a href="/dashboard" class="dashboard-link">Dashboard</a>
-          <button id="notifications-btn" class="push-button">
-            Benachrichtigungen
-          </button>
         </div>
       </header>
 
@@ -56,7 +53,7 @@
             <span class="close-button">&times;</span>
           </div>
           <div class="modal-body">
-            <div id="chart-container"></div>
+            <div id="chart-container" style="height: 400px"></div>
           </div>
         </div>
       </div>
@@ -70,32 +67,19 @@
         const closeModal = document.querySelector(".close-button");
         const chartContainer = document.getElementById("chart-container");
         const chartAssetTitle = document.getElementById("chart-asset-title");
-        let chart = null; // Variable, um die Chart-Instanz zu halten
 
-        // ----- PWA Service Worker & Push Notifications -----
-        if ("serviceWorker" in navigator) {
-          navigator.serviceWorker
-            .register("{{ url_for('static', filename='sw.js') }}")
-            .then((registration) => {
-              console.log("Service Worker registriert:", registration);
-              const notificationsBtn =
-                document.getElementById("notifications-btn");
-              notificationsBtn.addEventListener("click", () => {
-                askForNotificationPermission(registration);
-              });
-            })
-            .catch((error) => {
-              console.log(
-                "Service Worker Registrierung fehlgeschlagen:",
-                error
-              );
-            });
-        }
+        // Diese Variable wird die Chart-Instanz halten.
+        // Wichtig: Sie wird nur hier deklariert.
+        let chart = null;
 
         // ----- Live-Signale laden -----
         function fetchSignalData() {
           fetch("/api/assets")
-            .then((response) => response.json())
+            .then((response) => {
+              if (!response.ok)
+                throw new Error(`HTTP-Fehler! Status: ${response.status}`);
+              return response.json();
+            })
             .then((data) => {
               signalCardsContainer.innerHTML = ""; // Leeren für Refresh
               data.forEach((asset) => {
@@ -116,6 +100,7 @@
                                 <small>Letztes Update: ${asset.timestamp}</small>
                             </div>
                         `;
+                // Event Listener, um das Chart-Modal zu öffnen
                 card.addEventListener("click", () =>
                   openChartModal(asset.asset)
                 );
@@ -129,31 +114,12 @@
             });
         }
 
-        // ----- Lightweight Chart Logik -----
-        function createChart(container) {
-          return LightweightCharts.createChart(container, {
-            width: container.clientWidth,
-            height: 400,
-            layout: {
-              backgroundColor: "#1E1E1E",
-              textColor: "#D1D4DC",
-            },
-            grid: {
-              vertLines: { color: "#333" },
-              horzLines: { color: "#333" },
-            },
-            crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
-            rightPriceScale: { borderColor: "#444" },
-            timeScale: { borderColor: "#444" },
-          });
-        }
-
         // Funktion, um den Chart im Modal zu öffnen und Daten zu laden
         function openChartModal(symbol) {
           chartAssetTitle.textContent = `${symbol} Chart (Täglich)`;
           modal.style.display = "block";
 
-          // Bestehenden Chart entfernen, falls vorhanden
+          // Bestehenden Chart sicher entfernen, falls das Modal erneut geöffnet wird
           if (chart) {
             chart.remove();
             chart = null;
@@ -170,14 +136,27 @@
             })
             .then((data) => {
               chartContainer.innerHTML = ""; // Lade-Spinner entfernen
-              if (data.error || data.length === 0) {
+              if (!data || data.length === 0 || data.error) {
                 chartContainer.innerHTML =
                   '<p class="error-msg">Keine Chart-Daten verfügbar.</p>';
                 return;
               }
 
-              // Neuen Chart erstellen
-              chart = createChart(chartContainer);
+              // Erstelle den Chart hier und weise ihn der 'chart'-Variable zu
+              chart = LightweightCharts.createChart(chartContainer, {
+                width: chartContainer.clientWidth,
+                height: 400,
+                layout: { backgroundColor: "#1E1E1E", textColor: "#D1D4DC" },
+                grid: {
+                  vertLines: { color: "#333" },
+                  horzLines: { color: "#333" },
+                },
+                crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+                rightPriceScale: { borderColor: "#444" },
+                timeScale: { borderColor: "#444" },
+              });
+
+              // Füge die Candlestick-Serie hinzu
               const candlestickSeries = chart.addCandlestickSeries({
                 upColor: "#26a69a",
                 downColor: "#ef5350",
@@ -197,14 +176,14 @@
             });
         }
 
+        // --- Event Listeners ---
+
         // Modal-Schließ-Logik
         closeModal.onclick = () => {
           modal.style.display = "none";
         };
         window.onclick = (event) => {
-          if (event.target == modal) {
-            modal.style.display = "none";
-          }
+          if (event.target == modal) modal.style.display = "none";
         };
 
         // Event Listener für Fenstergrößenänderung, um den Chart anzupassen
@@ -214,9 +193,9 @@
           }
         });
 
-        // Initiale Daten laden und dann alle 30 Sekunden aktualisieren
+        // Initiale Daten laden und dann alle 60 Sekunden aktualisieren
         fetchSignalData();
-        setInterval(fetchSignalData, 30000);
+        setInterval(fetchSignalData, 60000);
       });
     </script>
   </body>
