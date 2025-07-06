@@ -54,10 +54,8 @@ def get_assets():
                     print(f"Fehler beim Ausführen des {strategy_name}-Predictors für {symbol}: {e}")
     return jsonify(assets_data)
 
-# KORRIGIERTE ROUTE: Wir erwarten einen sauberen Parameter ohne Schrägstrich
 @app.route('/historical-data/<ticker>')
 def get_historical_data(ticker):
-    # Wir ersetzen den Platzhalter im Code wieder durch den echten Schrägstrich für die DB-Abfrage
     db_symbol = ticker.replace('-', '/')
     query = text("SELECT timestamp, open, high, low, close FROM historical_data_daily WHERE symbol = :symbol_param ORDER BY timestamp ASC LIMIT 200")
     try:
