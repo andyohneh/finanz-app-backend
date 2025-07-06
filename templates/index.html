@@ -3,201 +3,220 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>KI Finanz-Cockpit</title>
-    <link rel="manifest" href="/manifest.json" />
-    <link rel="icon" type="image/png" href="/icon-192.png" />
+    <title>Diamond Sky • KI-Handelssignale</title>
+    <link
+      rel="icon"
+      href="{{ url_for('static', filename='favicon.ico') }}"
+      type="image/x-icon"
+    />
+    <link
+      rel="manifest"
+      href="{{ url_for('static', filename='manifest.json') }}"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      href="https://fonts.googleapis.com/icon?family=Material+Icons"
+      rel="stylesheet"
+    />
     <link
       rel="stylesheet"
-      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css"
+      href="{{ url_for('static', filename='css/style.css') }}"
     />
-    <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
-    <style>
-      :root {
-        --bg-color: #f4f7f9;
-        --card-bg-color: #ffffff;
-        --text-color: #3d4852;
-        --header-color: #2c5282;
-        --border-color: #e2e8f0;
-        --green: #2f855a;
-        --red: #c53030;
-        --grey: #4a5568;
-      }
-      body {
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto;
-        background-color: var(--bg-color);
-        color: var(--text-color);
-        margin: 0;
-        padding: 20px;
-      }
-      .header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 30px;
-        padding-bottom: 10px;
-        border-bottom: 2px solid var(--border-color);
-      }
-      .header h1 {
-        color: var(--header-color);
-        margin: 0;
-      }
-      .asset-section {
-        margin-bottom: 40px;
-      }
-      .asset-section h2 {
-        color: var(--header-color);
-        border-bottom: 1px solid var(--border-color);
-        padding-bottom: 10px;
-      }
-      .container {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-        gap: 20px;
-      }
-      .card {
-        background-color: var(--card-bg-color);
-        border-radius: 8px;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        overflow: hidden;
-        border-left: 5px solid var(--grey);
-      }
-      .card.green {
-        border-left-color: var(--green);
-      }
-      .card.red {
-        border-left-color: var(--red);
-      }
-      .card-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 15px 20px;
-      }
-      .card-header h3 {
-        margin: 0;
-        font-size: 1.2em;
-      }
-      .card-header .fas {
-        font-size: 1.5em;
-      }
-      .card.green .fas {
-        color: var(--green);
-      }
-      .card.red .fas {
-        color: var(--red);
-      }
-      .card-body {
-        padding: 0 20px 20px;
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 10px;
-      }
-      .card-body p {
-        margin: 0;
-      }
-      .card-footer {
-        padding: 10px 20px;
-        font-size: 0.8em;
-        color: var(--grey);
-        text-align: right;
-        border-top: 1px solid var(--border-color);
-      }
-      .back-link {
-        color: var(--header-color);
-        text-decoration: none;
-        font-weight: bold;
-      }
-      .chart-container {
-        width: 100%;
-        min-height: 400px;
-        margin-top: 20px;
-      }
-    </style>
+    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
   </head>
   <body>
-    <div class="header">
-      <h1>KI Finanz-Cockpit</h1>
-      <a href="/dashboard" class="back-link">Zum Analyse-Dashboard</a>
-    </div>
-    <div class="asset-section">
-      <h2>Bitcoin (BTC/USD)</h2>
-      <div class="chart-container" id="chart-btc"></div>
-      <div class="container" id="btc-container"></div>
-    </div>
-    <div class="asset-section">
-      <h2>Gold (XAU/USD)</h2>
-      <div class="chart-container" id="chart-xau"></div>
-      <div class="container" id="xau-container"></div>
-    </div>
+    <div class="container">
+      <header class="header">
+        <div class="logo">
+          <img
+            src="{{ url_for('static', filename='images/logo.png') }}"
+            alt="Diamond Sky Logo"
+          />
+          <h1>Diamond Sky</h1>
+        </div>
+        <div class="header-actions">
+          <a href="/dashboard" class="dashboard-link">Dashboard</a>
+          <button id="notifications-btn" class="push-button">
+            Benachrichtigungen
+          </button>
+        </div>
+      </header>
 
+      <main>
+        <div class="signal-cards-container"></div>
+      </main>
+
+      <div id="chart-modal" class="modal">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h2 id="chart-asset-title">Chart</h2>
+            <span class="close-button">&times;</span>
+          </div>
+          <div class="modal-body">
+            <div id="chart-container"></div>
+          </div>
+        </div>
+      </div>
+    </div>
     <script>
-      async function createApexChart(containerId, symbol) {
-        const chartContainer = document.getElementById(containerId);
-        if (!chartContainer) return;
+      document.addEventListener("DOMContentLoaded", function () {
+        const signalCardsContainer = document.querySelector(
+          ".signal-cards-container"
+        );
+        const modal = document.getElementById("chart-modal");
+        const closeModal = document.querySelector(".close-button");
+        const chartContainer = document.getElementById("chart-container");
+        const chartAssetTitle = document.getElementById("chart-asset-title");
+        let chart = null; // Variable, um die Chart-Instanz zu halten
 
-        const options = {
-          series: [{ data: [] }],
-          chart: {
-            type: "candlestick",
+        // ----- PWA Service Worker & Push Notifications -----
+        if ("serviceWorker" in navigator) {
+          navigator.serviceWorker
+            .register("{{ url_for('static', filename='sw.js') }}")
+            .then((registration) => {
+              console.log("Service Worker registriert:", registration);
+              const notificationsBtn =
+                document.getElementById("notifications-btn");
+              notificationsBtn.addEventListener("click", () => {
+                askForNotificationPermission(registration);
+              });
+            })
+            .catch((error) => {
+              console.log(
+                "Service Worker Registrierung fehlgeschlagen:",
+                error
+              );
+            });
+        }
+
+        // ----- Live-Signale laden -----
+        function fetchSignalData() {
+          fetch("/api/assets")
+            .then((response) => response.json())
+            .then((data) => {
+              signalCardsContainer.innerHTML = ""; // Leeren für Refresh
+              data.forEach((asset) => {
+                const card = document.createElement("div");
+                card.className = `signal-card ${asset.color}`;
+                card.innerHTML = `
+                            <div class="card-header">
+                                <span class="asset-name">${asset.asset}</span>
+                                <span class="material-icons icon">${asset.icon}</span>
+                            </div>
+                            <div class="card-body">
+                                <div class="trade-info"><strong>Signal:</strong> ${asset.signal}</div>
+                                <div class="trade-info"><strong>Einstieg:</strong> ${asset.entry}</div>
+                                <div class="trade-info"><strong>Take Profit:</strong> ${asset.takeProfit}</div>
+                                <div class="trade-info"><strong>Stop Loss:</strong> ${asset.stopLoss}</div>
+                            </div>
+                            <div class="card-footer">
+                                <small>Letztes Update: ${asset.timestamp}</small>
+                            </div>
+                        `;
+                card.addEventListener("click", () =>
+                  openChartModal(asset.asset)
+                );
+                signalCardsContainer.appendChild(card);
+              });
+            })
+            .catch((error) => {
+              console.error("Fehler beim Laden der Signaldaten:", error);
+              signalCardsContainer.innerHTML =
+                '<p class="error-msg">Signale konnten nicht geladen werden.</p>';
+            });
+        }
+
+        // ----- Lightweight Chart Logik -----
+        function createChart(container) {
+          return LightweightCharts.createChart(container, {
+            width: container.clientWidth,
             height: 400,
-            animations: { enabled: true, easing: "easeinout", speed: 500 },
-          },
-          xaxis: { type: "datetime", labels: { style: { colors: "#888" } } },
-          yaxis: {
-            tooltip: { enabled: true },
-            labels: { style: { colors: "#888" } },
-          },
-        };
-        const chart = new ApexCharts(chartContainer, options);
-        chart.render();
-
-        try {
-          // KORREKTUR: Wir ersetzen den '/' durch einen '-' für die URL
-          const safeSymbol = symbol.replace("/", "-");
-          const response = await fetch(`/historical-data/${safeSymbol}`);
-          const data = await response.json();
-          chart.updateSeries([{ data: data }]);
-        } catch (error) {
-          console.error(
-            `Fehler beim Laden der Chart-Daten für ${symbol}:`,
-            error
-          );
-        }
-      }
-
-      async function fetchAssets() {
-        try {
-          const response = await fetch("/api/assets");
-          const assets = await response.json();
-          const btcContainer = document.getElementById("btc-container");
-          const xauContainer = document.getElementById("xau-container");
-          btcContainer.innerHTML = "";
-          xauContainer.innerHTML = "";
-          if (!assets || assets.length === 0) {
-            btcContainer.innerHTML = "<p>Keine Signale verfügbar.</p>";
-            return;
-          }
-          assets.forEach((asset) => {
-            const targetContainer = asset.name.includes("BTC")
-              ? btcContainer
-              : xauContainer;
-            const card = document.createElement("div");
-            card.className = `card ${asset.color}`;
-            card.innerHTML = `<div class="card-header"><h3>${asset.name}</h3><i class="fas ${asset.icon}"></i></div><div class="card-body"><p><strong>Signal:</strong> ${asset.signal}</p><p><strong>Einstiegspreis:</strong> ${asset.entry_price}</p><p><strong>Take Profit:</strong> ${asset.take_profit}</p><p><strong>Stop Loss:</strong> ${asset.stop_loss}</p></div><div class="card-footer">Letzte Aktualisierung: ${asset.timestamp}</div>`;
-            targetContainer.appendChild(card);
+            layout: {
+              backgroundColor: "#1E1E1E",
+              textColor: "#D1D4DC",
+            },
+            grid: {
+              vertLines: { color: "#333" },
+              horzLines: { color: "#333" },
+            },
+            crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+            rightPriceScale: { borderColor: "#444" },
+            timeScale: { borderColor: "#444" },
           });
-        } catch (error) {
-          console.error("Fehler beim Abrufen der Asset-Daten:", error);
-          document.getElementById("btc-container").innerHTML =
-            "<p class='error'>Fehler: Live-Signale konnten nicht geladen werden.</p>";
         }
-      }
 
-      document.addEventListener("DOMContentLoaded", () => {
-        fetchAssets();
-        createApexChart("chart-btc", "BTC/USD");
-        createApexChart("chart-xau", "XAU/USD");
-        setInterval(fetchAssets, 300000);
+        // Funktion, um den Chart im Modal zu öffnen und Daten zu laden
+        function openChartModal(symbol) {
+          chartAssetTitle.textContent = `${symbol} Chart (Täglich)`;
+          modal.style.display = "block";
+
+          // Bestehenden Chart entfernen, falls vorhanden
+          if (chart) {
+            chart.remove();
+            chart = null;
+          }
+
+          // Lade-Spinner anzeigen
+          chartContainer.innerHTML = '<div class="loader"></div>';
+
+          fetch(`/historical-data/${symbol}`)
+            .then((response) => {
+              if (!response.ok)
+                throw new Error("Netzwerkantwort war nicht ok.");
+              return response.json();
+            })
+            .then((data) => {
+              chartContainer.innerHTML = ""; // Lade-Spinner entfernen
+              if (data.error || data.length === 0) {
+                chartContainer.innerHTML =
+                  '<p class="error-msg">Keine Chart-Daten verfügbar.</p>';
+                return;
+              }
+
+              // Neuen Chart erstellen
+              chart = createChart(chartContainer);
+              const candlestickSeries = chart.addCandlestickSeries({
+                upColor: "#26a69a",
+                downColor: "#ef5350",
+                borderDownColor: "#ef5350",
+                borderUpColor: "#26a69a",
+                wickDownColor: "#ef5350",
+                wickUpColor: "#26a69a",
+              });
+
+              candlestickSeries.setData(data);
+              chart.timeScale().fitContent();
+            })
+            .catch((error) => {
+              console.error("Fehler beim Laden der Chart-Daten:", error);
+              chartContainer.innerHTML =
+                '<p class="error-msg">Chart konnte nicht geladen werden.</p>';
+            });
+        }
+
+        // Modal-Schließ-Logik
+        closeModal.onclick = () => {
+          modal.style.display = "none";
+        };
+        window.onclick = (event) => {
+          if (event.target == modal) {
+            modal.style.display = "none";
+          }
+        };
+
+        // Event Listener für Fenstergrößenänderung, um den Chart anzupassen
+        window.addEventListener("resize", () => {
+          if (chart && chartContainer.clientWidth > 0) {
+            chart.resize(chartContainer.clientWidth, 400);
+          }
+        });
+
+        // Initiale Daten laden und dann alle 30 Sekunden aktualisieren
+        fetchSignalData();
+        setInterval(fetchSignalData, 30000);
       });
     </script>
   </body>
