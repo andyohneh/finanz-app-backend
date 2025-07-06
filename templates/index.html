@@ -135,9 +135,8 @@
                 return;
               }
 
-              const { createChart, CandlestickSeries } = LightweightCharts;
-
-              chart = createChart(chartContainer, {
+              // KORREKTUR: Wir greifen DIREKT auf das globale Objekt zu, ohne Destrukturierung.
+              chart = window.LightweightCharts.createChart(chartContainer, {
                 width: chartContainer.clientWidth,
                 height: 400,
                 layout: { backgroundColor: "#1E1E1E", textColor: "#D1D4DC" },
@@ -147,15 +146,18 @@
                 },
               });
 
-              // FINALE KORREKTUR: Die korrekte Funktion aus der Doku verwenden
-              const candlestickSeries = chart.addSeries(CandlestickSeries, {
-                upColor: "#26a69a",
-                downColor: "#ef5350",
-                borderDownColor: "#ef5350",
-                borderUpColor: "#26a69a",
-                wickDownColor: "#ef5350",
-                wickUpColor: "#26a69a",
-              });
+              // KORREKTUR: Wir übergeben den Serien-Typ DIREKT aus dem globalen Objekt.
+              const candlestickSeries = chart.addSeries(
+                window.LightweightCharts.CandlestickSeries,
+                {
+                  upColor: "#26a69a",
+                  downColor: "#ef5350",
+                  borderDownColor: "#ef5350",
+                  borderUpColor: "#26a69a",
+                  wickDownColor: "#ef5350",
+                  wickUpColor: "#26a69a",
+                }
+              );
 
               candlestickSeries.setData(data);
               chart.timeScale().fitContent();
