@@ -60,18 +60,44 @@ def get_assets():
                     print(f"Fehler beim Ausführen des {strategy_name}-Predictors für {symbol}: {e}")
     return jsonify(assets_data)
 
-@app.route('/historical-data/<ticker>')
-def get_historical_data(ticker):
-    db_symbol = ticker.replace('-', '/')
-    query = text("SELECT timestamp, open, high, low, close FROM historical_data_daily WHERE symbol = :symbol_param ORDER BY timestamp ASC LIMIT 200")
+@app.route('/historical-data/<symbol>')
+def get_historical_data(symbol):
+    """Holt die aktuellen, historischen TÄGLICHEN Daten für die Lightweight Charts."""
+    # Konvertiert 'BTCUSD' in das Datenbankformat 'BTC/USD'
+    db_symbol = f"{symbol[:-3]}/{symbol[-3:]}"
+    
+    # NEUE QUERY: Greift auf die tägliche Tabelle zu und holt mehr Datenpunkte
+    query = text("""
+        SELECT timestamp, open, high, low, close 
+        FROM historical_data_daily 
+        WHERE symbol = :symbol_param 
+        ORDER BY timestamp DESC 
+        LIMIT 200
+    """)
+    
     try:
         with engine.connect() as conn:
             result = conn.execute(query, {"symbol_param": db_symbol}).fetchall()
-        data_points = [{"x": row[0].strftime('%Y-%m-%d'), "y": [row[1], row[2], row[3], row[4]]} for row in result]
-        return jsonify(data_points)
+            
+            # Die Daten müssen für den Chart chronologisch sein (älteste zuerst)
+            result.reverse() 
+            
+            # Daten für Lightweight Charts formatieren
+            data_points = [
+                {
+                    "time": row[0].strftime('%Y-%m-%d'), # Wichtig: Nur Datum, keine Uhrzeit
+                    "open": row[1],
+                    "high": row[2],
+                    "low": row[3],
+                    "close": row[4]
+                }
+                for row in result
+            ]
+            return jsonify(data_points)
+            
     except Exception as e:
-        print(f"Fehler beim Laden der OHLC-Chart-Daten für {db_symbol}: {e}")
-        return jsonify([])
+        print(f"Fehler beim Laden der Chart-Daten für {db_symbol}: {e}")
+        return jsonify({"error": "Konnte Chart-Daten nicht laden."}), 500
 
 @app.route('/dashboard')
 def dashboard():
