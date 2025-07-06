@@ -1,4 +1,4 @@
-# backend/app.py (Finale, saubere Version)
+# backend/app.py (Finale Version mit korrekten Pfaden)
 import os
 import json
 from flask import Flask, jsonify, render_template, request, send_from_directory
@@ -9,7 +9,9 @@ from sqlalchemy.dialects.postgresql import insert
 from database import engine, push_subscriptions
 
 # --- GRUNDEINSTELLUNGEN ---
-app = Flask(__name__, template_folder='../templates', static_folder='../static')
+# KORREKTUR HIER: Wir sagen Flask, dass die Ordner im selben Verzeichnis liegen.
+app = Flask(__name__, template_folder='templates', static_folder='static')
+
 
 # --- ROUTEN ---
 
@@ -23,7 +25,7 @@ def dashboard():
     """Liest die Backtest-Ergebnisse und zeigt sie auf der Dashboard-Seite an."""
     results = {'daily': [], 'swing': [], 'genius': []}
     try:
-        # Lädt die Ergebnisse aus der JSON-Datei, die vom Backtester erstellt wird
+        # Sucht die JSON-Datei im Hauptverzeichnis des Projekts
         with open('backtest_results.json', 'r', encoding='utf-8') as f:
             results = json.load(f)
     except Exception as e:
