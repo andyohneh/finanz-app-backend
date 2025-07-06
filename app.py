@@ -67,6 +67,13 @@ def get_historical_data(symbol):
     except Exception as e:
         print(f"Fehler beim Laden der OHLC-Chart-Daten für {db_symbol}: {e}")
         return jsonify([])
+    
+    # #######################################################
+# ### NEUE TEST-ROUTE ZUM DEBUGGEN ###
+@app.route('/version')
+def get_version():
+    return jsonify({"version": "3.0", "status": "neuer Code ist live!"})
+# #######################################################
 
 @app.route('/dashboard')
 def dashboard():
