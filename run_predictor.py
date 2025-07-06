@@ -1,4 +1,5 @@
-# backend/run_predictor.py
+# backend/run_predictor.py (Finale, intelligente Version)
+import argparse
 import pandas as pd
 from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import insert
@@ -6,41 +7,62 @@ from datetime import datetime, timezone
 
 # Eigene Module importieren
 from database import engine, historical_data_daily, predictions
-import predictor_daily # Wir nutzen die "daily" Strategie für die Live-Signale
+import predictor_daily
+import predictor_swing
+import predictor_genius
 
 # --- KONFIGURATION ---
-SYMBOLS = ['BTC/USD', 'XAU/USD']
+SYMBOLS_TO_PROCESS = ['BTC/USD', 'XAU/USD']
 
-def generate_and_store_predictions():
+# Mapping von Strategie-Argument zu Predictor-Modul
+PREDICTOR_MAPPING = {
+    'daily': predictor_daily,
+    'swing': predictor_swing,
+    'genius': predictor_genius
+}
+
+def generate_and_store_predictions(strategy):
     """
-    Generiert für jedes Symbol eine neue Vorhersage und speichert sie
-    in der 'predictions'-Tabelle in der Datenbank.
+    Generiert für eine gegebene Strategie die Signale und speichert sie.
     """
-    print("=== Starte Generator für Live-Signale ===")
+    print(f"=== Starte Generator für '{strategy.upper()}' Live-Signale ===")
     
+    predictor_module = PREDICTOR_MAPPING.get(strategy)
+    if not predictor_module:
+        print(f"FEHLER: Unbekannte Strategie '{strategy}'. Verfügbar: {list(PREDICTOR_MAPPING.keys())}")
+        return
+
     with engine.connect() as conn:
-        for symbol in SYMBOLS:
-            print(f"\n--- Verarbeite {symbol} ---")
+        for symbol in SYMBOLS_TO_PROCESS:
+            print(f"\n--- Verarbeite {symbol} für Strategie '{strategy}' ---")
             
-            # 1. Lade die neuesten Daten für das Symbol
+            # 1. Konstruiere den korrekten Modell-Pfad
+            symbol_filename = symbol.replace('/', '') # BTC/USD -> BTCUSD
+            model_path = f"models/model_{strategy}_{symbol_filename}.pkl"
+            print(f"Verwende Modell: {model_path}")
+            
+            # 2. Lade die neuesten Daten für das Symbol
+            # HINWEIS: Wir verwenden hier immer die TAGESDATEN als Basis.
+            # Wenn du 4H-Daten für Swing hast, müsstest du hier die Tabelle anpassen.
             query = text("SELECT * FROM historical_data_daily WHERE symbol = :symbol ORDER BY timestamp DESC LIMIT 200")
             df = pd.read_sql_query(query, conn, params={'symbol': symbol})
             
-            if df.empty or len(df) < 50: # Wir brauchen genug Daten
+            if df.empty or len(df) < 50:
                 print(f"Nicht genügend historische Daten für {symbol}, überspringe.")
                 continue
 
-            # Daten aufsteigend sortieren für die Indikatoren-Berechnung
             df = df.sort_values(by='timestamp').reset_index(drop=True)
 
-            # 2. Hole die Vorhersage vom Predictor-Modul
-            prediction_result = predictor_daily.get_prediction(df, symbol)
+            # 3. Hole die Vorhersage vom jeweiligen Predictor-Modul
+            prediction_result = predictor_module.get_prediction(df, model_path)
             
             if 'error' in prediction_result:
                 print(f"Fehler bei der Vorhersage für {symbol}: {prediction_result['error']}")
                 continue
             
-            # 3. Bereite den Datensatz für die Datenbank vor
+            # 4. Speichere das Ergebnis in der 'predictions'-Tabelle
+            # HINWEIS: Dies überschreibt Signale von anderen Strategien für dasselbe Symbol!
+            # Deine App zeigt immer das Signal an, das als letztes generiert wurde.
             update_data = {
                 'symbol': symbol,
                 'signal': prediction_result['signal'],
@@ -50,22 +72,23 @@ def generate_and_store_predictions():
                 'last_updated': datetime.now(timezone.utc)
             }
 
-            # 4. Speichere das Ergebnis in der 'predictions'-Tabelle (Upsert)
             stmt = insert(predictions).values(update_data)
-            
-            # Definiere, was bei einem Konflikt (Symbol existiert bereits) passieren soll:
-            # Aktualisiere einfach alle Felder.
-            stmt = stmt.on_conflict_do_update(
-                index_elements=['symbol'],
-                set_=update_data
-            )
+            stmt = stmt.on_conflict_do_update(index_elements=['symbol'], set_=update_data)
             
             conn.execute(stmt)
             conn.commit()
-            print(f"Signal für {symbol} erfolgreich in der Datenbank gespeichert: {prediction_result['signal']}")
+            print(f"Signal für {symbol} ({strategy}) erfolgreich gespeichert: {prediction_result['signal']}")
 
-    print("\n=== Signal-Generator abgeschlossen ===")
-
+    print(f"\n=== Signal-Generator für '{strategy.upper()}' abgeschlossen ===")
 
 if __name__ == "__main__":
-    generate_and_store_predictions()
+    # Erlaubt das Ausführen mit Kommandozeilen-Argument, z.B. python run_predictor.py daily
+    parser = argparse.ArgumentParser(description="KI-Signal-Generator für verschiedene Handelsstrategien.")
+    parser.add_argument(
+        "strategy", 
+        type=str, 
+        choices=['daily', 'swing', 'genius'], 
+        help="Die auszuführende Strategie (daily, swing, genius)."
+    )
+    args = parser.parse_args()
+    generate_and_store_predictions(args.strategy)
