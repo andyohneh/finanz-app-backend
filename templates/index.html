@@ -152,7 +152,9 @@
         chart.render();
 
         try {
-          const response = await fetch(`/historical-data/${symbol}`);
+          // KORREKTUR: Wir ersetzen den '/' durch einen '-' für die URL
+          const safeSymbol = symbol.replace("/", "-");
+          const response = await fetch(`/historical-data/${safeSymbol}`);
           const data = await response.json();
           chart.updateSeries([{ data: data }]);
         } catch (error) {

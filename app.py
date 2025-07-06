@@ -1,5 +1,4 @@
-# app.py (Finale Version für ApexCharts)
-# Version 2.0 - Letzter Fix für Render
+# app.py (Finale Version mit Schrägstrich-Fix)
 import os
 import json
 from flask import Flask, jsonify, render_template, request, send_from_directory
@@ -55,9 +54,11 @@ def get_assets():
                     print(f"Fehler beim Ausführen des {strategy_name}-Predictors für {symbol}: {e}")
     return jsonify(assets_data)
 
-@app.route('/historical-data/<symbol>')
-def get_historical_data(symbol):
-    db_symbol = symbol.split('(')[0].strip()
+# KORRIGIERTE ROUTE: Wir erwarten einen sauberen Parameter ohne Schrägstrich
+@app.route('/historical-data/<ticker>')
+def get_historical_data(ticker):
+    # Wir ersetzen den Platzhalter im Code wieder durch den echten Schrägstrich für die DB-Abfrage
+    db_symbol = ticker.replace('-', '/')
     query = text("SELECT timestamp, open, high, low, close FROM historical_data_daily WHERE symbol = :symbol_param ORDER BY timestamp ASC LIMIT 200")
     try:
         with engine.connect() as conn:
@@ -67,13 +68,6 @@ def get_historical_data(symbol):
     except Exception as e:
         print(f"Fehler beim Laden der OHLC-Chart-Daten für {db_symbol}: {e}")
         return jsonify([])
-    
-    # #######################################################
-# ### NEUE TEST-ROUTE ZUM DEBUGGEN ###
-@app.route('/version')
-def get_version():
-    return jsonify({"version": "3.0", "status": "neuer Code ist live!"})
-# #######################################################
 
 @app.route('/dashboard')
 def dashboard():
