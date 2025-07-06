@@ -33,7 +33,7 @@
       <header class="header">
         <div class="logo">
           <img
-            src="{{ url_for('static', filename='images/logo.png') }}"
+            src="{{ url_for('static', filename='logo.png') }}"
             alt="Diamond Sky Logo"
           />
           <h1>Diamond Sky</h1>
@@ -135,7 +135,9 @@
                 return;
               }
 
-              chart = LightweightCharts.createChart(chartContainer, {
+              const { createChart, CandlestickSeries } = LightweightCharts;
+
+              chart = createChart(chartContainer, {
                 width: chartContainer.clientWidth,
                 height: 400,
                 layout: { backgroundColor: "#1E1E1E", textColor: "#D1D4DC" },
@@ -145,7 +147,8 @@
                 },
               });
 
-              const candlestickSeries = chart.addCandlestickSeries({
+              // FINALE KORREKTUR: Die korrekte Funktion aus der Doku verwenden
+              const candlestickSeries = chart.addSeries(CandlestickSeries, {
                 upColor: "#26a69a",
                 downColor: "#ef5350",
                 borderDownColor: "#ef5350",
