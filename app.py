@@ -86,6 +86,11 @@ def get_historical_data(symbol):
     except Exception as e:
         print(f"Fehler beim Laden der Chart-Daten für {db_symbol}: {e}")
         return jsonify({"error": "Konnte Chart-Daten nicht laden."}), 500
+    
+@app.route('/test')
+def chart_test():
+    """Liefert die Chart-Testseite aus."""
+    return render_template('chart_test.html')
 
 # --- PWA-spezifische Routen ---
 @app.route('/manifest.json')
