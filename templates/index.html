@@ -26,7 +26,7 @@
       href="{{ url_for('static', filename='css/style.css') }}"
     />
 
-    <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
   </head>
   <body>
     <div class="container">
@@ -54,7 +54,7 @@
             <span class="close-button">&times;</span>
           </div>
           <div class="modal-body">
-            <div id="chart-container" style="height: 400px"></div>
+            <div id="chart-container"></div>
           </div>
         </div>
       </div>
@@ -70,6 +70,7 @@
         const chartContainer = document.getElementById("chart-container");
         const chartAssetTitle = document.getElementById("chart-asset-title");
 
+        // Diese Variable wird die ApexCharts-Instanz halten
         let chart = null;
 
         function fetchSignalData() {
@@ -114,8 +115,9 @@
           chartAssetTitle.textContent = `${symbol} Chart (Täglich)`;
           modal.style.display = "block";
 
+          // Zerstöre die alte Chart-Instanz, falls vorhanden
           if (chart) {
-            chart.remove();
+            chart.destroy();
             chart = null;
           }
 
@@ -135,32 +137,46 @@
                 return;
               }
 
-              // KORREKTUR: Wir greifen DIREKT auf das globale Objekt zu, ohne Destrukturierung.
-              chart = window.LightweightCharts.createChart(chartContainer, {
-                width: chartContainer.clientWidth,
-                height: 400,
-                layout: { backgroundColor: "#1E1E1E", textColor: "#D1D4DC" },
-                grid: {
-                  vertLines: { color: "#333" },
-                  horzLines: { color: "#333" },
+              // Daten für ApexCharts umformatieren
+              const seriesData = data.map((dp) => ({
+                x: new Date(dp.time).getTime(),
+                y: [dp.open, dp.high, dp.low, dp.close],
+              }));
+
+              const options = {
+                series: [
+                  {
+                    name: "Kurs",
+                    data: seriesData,
+                  },
+                ],
+                chart: {
+                  type: "candlestick",
+                  height: 400,
+                  toolbar: { show: true },
+                  background: "transparent",
                 },
-              });
+                theme: {
+                  mode: "dark",
+                },
+                title: {
+                  text: `${symbol} Candlestick Chart`,
+                  align: "left",
+                },
+                xaxis: {
+                  type: "datetime",
+                },
+                yaxis: {
+                  tooltip: { enabled: true },
+                },
+                tooltip: {
+                  theme: "dark",
+                },
+              };
 
-              // KORREKTUR: Wir übergeben den Serien-Typ DIREKT aus dem globalen Objekt.
-              const candlestickSeries = chart.addSeries(
-                window.LightweightCharts.CandlestickSeries,
-                {
-                  upColor: "#26a69a",
-                  downColor: "#ef5350",
-                  borderDownColor: "#ef5350",
-                  borderUpColor: "#26a69a",
-                  wickDownColor: "#ef5350",
-                  wickUpColor: "#26a69a",
-                }
-              );
-
-              candlestickSeries.setData(data);
-              chart.timeScale().fitContent();
+              // Neuen ApexChart erstellen und rendern
+              chart = new ApexCharts(chartContainer, options);
+              chart.render();
             })
             .catch((error) => {
               console.error("Fehler beim Laden der Chart-Daten:", error);
@@ -175,12 +191,6 @@
         window.onclick = (event) => {
           if (event.target == modal) modal.style.display = "none";
         };
-
-        window.addEventListener("resize", () => {
-          if (chart && chartContainer.clientWidth > 0) {
-            chart.resize(chartContainer.clientWidth, 400);
-          }
-        });
 
         fetchSignalData();
         setInterval(fetchSignalData, 60000);
