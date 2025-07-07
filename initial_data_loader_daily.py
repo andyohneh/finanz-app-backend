@@ -1,15 +1,18 @@
-# backend/initial_data_loader_daily.py (Finale Version für BTC & XAU)
+# backend/initial_data_loader_daily.py (Finale Version mit korrektem Gold-Ticker)
 import yfinance as yf
 from datetime import datetime
 from sqlalchemy.dialects.postgresql import insert
 import pandas as pd
 
-# Eigene Module importieren
 from database import engine, historical_data_daily
 
 # --- EINSTELLUNGEN ---
-# KORREKTUR: Wir laden nur noch die gewünschten Symbole
-SYMBOLS = ["BTC-USD", "XAU-USD"]
+# Wir definieren die Ticker, wie yfinance sie kennt.
+# 'GC=F' ist der korrekte Ticker für Gold-Futures.
+SYMBOLS_TO_FETCH = {
+    "BTC-USD": "BTC/USD",
+    "GC=F": "XAU/USD"  # <-- KORREKTUR: Richtiger Ticker für Gold
+}
 
 def load_all_historical_data():
     """
@@ -19,24 +22,27 @@ def load_all_historical_data():
     print("Starte den Download der historischen Daten von der yfinance API...")
     
     with engine.connect() as conn:
-        for ticker in SYMBOLS:
-            db_symbol = ticker.replace('-', '/')
-            print(f"\n--- Verarbeite Symbol: {ticker} ---")
+        for ticker, db_symbol in SYMBOLS_TO_FETCH.items():
+            print(f"\n--- Verarbeite Symbol: {ticker} (wird als {db_symbol} gespeichert) ---")
             
             try:
-                data = yf.download(ticker, period="max", interval="1d")
+                # Lade die maximal verfügbare Menge an täglichen Daten
+                data = yf.download(ticker, period="max", interval="1d", auto_adjust=True)
                 
                 if data.empty:
                     print(f"Keine Daten für {ticker} gefunden. Überspringe.")
                     continue
 
+                # Daten für die Datenbank vorbereiten
                 data.reset_index(inplace=True)
                 data.rename(columns={
                     'Date': 'timestamp', 'Open': 'open', 'High': 'high', 
                     'Low': 'low', 'Close': 'close', 'Volume': 'volume'
                 }, inplace=True)
                 
+                # Wir weisen das korrekte, interne Symbol zu
                 data['symbol'] = db_symbol
+                
                 data = data[['timestamp', 'symbol', 'open', 'high', 'low', 'close', 'volume']]
                 data.dropna(inplace=True)
 
@@ -46,6 +52,7 @@ def load_all_historical_data():
                     
                 print(f"Füge {len(records)} Datensätze für {db_symbol} in die Datenbank ein...")
                 
+                # Bulk-Insert für bessere Performance
                 stmt = insert(historical_data_daily).values(records)
                 stmt = stmt.on_conflict_do_nothing(index_elements=['timestamp', 'symbol'])
                 conn.execute(stmt)
@@ -56,7 +63,7 @@ def load_all_historical_data():
             except Exception as e:
                 print(f"Ein Fehler ist bei der Verarbeitung von {ticker} aufgetreten: {e}")
 
-    print("\n✅ Alle historischen Daten wurden erfolgreich geladen und gespeichert!")
+    print("\n✅ Alle historischen Daten wurden erfolgreich geladen!")
 
 if __name__ == "__main__":
     load_all_historical_data()
