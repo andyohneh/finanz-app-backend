@@ -1,4 +1,4 @@
-# backend/initial_data_loader_daily.py (Die finale, korrigierte Logik)
+# backend/initial_data_loader_daily.py (Die endgültige, unumstößliche Lösung)
 import yfinance as yf
 from sqlalchemy import text
 import pandas as pd
@@ -12,10 +12,10 @@ SYMBOLS_TO_FETCH = {
 
 def load_all_historical_data():
     """
-    Lädt historische Daten und schreibt sie mit der korrekten Logik
-    in die Datenbank, um alle Fehler zu umgehen.
+    Lädt historische Daten und konvertiert sie robust in das richtige Format
+    für die Datenbank.
     """
-    print("Starte den Download der historischen Daten (finale Logik)...")
+    print("Starte den Download der historischen Daten (unumstößliche Logik)...")
 
     with engine.connect() as conn:
         for ticker, db_symbol in SYMBOLS_TO_FETCH.items():
@@ -23,17 +23,16 @@ def load_all_historical_data():
 
             try:
                 # Schritt 1: Daten laden
-                data = yf.download(ticker, period="max", interval="1d", progress=False, auto_adjust=False)
+                data = yf.download(ticker, period="max", interval="1d", progress=False)
 
                 if data.empty:
                     print(f"Keine Daten für {ticker} gefunden.")
                     continue
 
-                # Schritt 2: Den Datums-Index in eine Spalte umwandeln
-                # yfinance erstellt eine Spalte 'Date'
+                # Schritt 2: Den Index (das Datum) in eine normale Spalte umwandeln
                 data.reset_index(inplace=True)
 
-                # Schritt 3: Spaltennamen bereinigen und umbenennen
+                # Schritt 3: Spalten explizit umbenennen
                 data.rename(columns={
                     'Date': 'timestamp',
                     'Open': 'open',
@@ -43,16 +42,19 @@ def load_all_historical_data():
                     'Volume': 'volume'
                 }, inplace=True)
                 
-                # Schritt 4: Das interne Symbol zuweisen
+                # Schritt 4: Das interne Symbol für unsere Datenbank setzen
                 data['symbol'] = db_symbol
                 
-                # Schritt 5: Sicherstellen, dass alle nötigen Spalten da sind
+                # Schritt 5: Nur die Spalten auswählen, die wir wirklich brauchen
                 required_columns = ['timestamp', 'symbol', 'open', 'high', 'low', 'close', 'volume']
-                data = data[required_columns]
-                data.dropna(inplace=True)
+                
+                # Wir stellen sicher, dass alle Spalten existieren, bevor wir sie auswählen
+                final_data = data[[col for col in required_columns if col in data.columns]]
+                final_data.dropna(inplace=True)
 
-                records = data.to_dict(orient='records')
+                records = final_data.to_dict(orient='records')
                 if not records:
+                    print("Keine validen Datensätze nach der Bereinigung.")
                     continue
 
                 print(f"Füge {len(records)} Datensätze für {db_symbol} mit direktem SQL-Befehl ein...")
