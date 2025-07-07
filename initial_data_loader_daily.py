@@ -1,4 +1,4 @@
-# backend/initial_data_loader_daily.py (Finale CSV-Version)
+# backend/initial_data_loader_daily.py (Die definitive, korrekte CSV-Version)
 import os
 import pandas as pd
 from sqlalchemy import text
@@ -9,9 +9,10 @@ DATA_DIR = "data/daily"
 
 def load_all_historical_data():
     """
-    Lädt historische Daten aus den lokalen CSV-Dateien in die Datenbank.
+    Lädt historische Daten aus den lokalen CSV-Dateien in die Datenbank
+    und behandelt den Datums-Index korrekt.
     """
-    print("Starte den Daten-Import aus den CSV-Dateien...")
+    print("Starte den Daten-Import aus den CSV-Dateien (definitiver Modus)...")
 
     if not os.path.exists(DATA_DIR):
         print(f"FEHLER: Das Datenverzeichnis '{DATA_DIR}' wurde nicht gefunden.")
@@ -26,14 +27,23 @@ def load_all_historical_data():
                 print(f"\n--- Verarbeite Datei: {filename} für Symbol {db_symbol} ---")
                 
                 try:
-                    df = pd.read_csv(filepath)
+                    # SCHRITT 1: Lese die CSV und erkenne die 'Date'-Spalte als Index
+                    df = pd.read_csv(filepath, index_col='Date', parse_dates=True)
+                    
+                    # SCHRITT 2: Wandle den Index in eine normale Spalte um.
+                    # Diese Spalte wird jetzt korrekt 'Date' heißen.
+                    df.reset_index(inplace=True)
+
+                    # SCHRITT 3: Benenne die Spalten um. JETZT wird 'Date' zu 'timestamp'.
                     df.rename(columns={
                         'Date': 'timestamp', 'Open': 'open', 'High': 'high',
                         'Low': 'low', 'Close': 'close', 'Volume': 'volume'
                     }, inplace=True)
                     
                     df['symbol'] = db_symbol
-                    df = df[['timestamp', 'symbol', 'open', 'high', 'low', 'close', 'volume']]
+                    
+                    required_columns = ['timestamp', 'symbol', 'open', 'high', 'low', 'close', 'volume']
+                    df = df[required_columns]
                     df.dropna(inplace=True)
 
                     records = df.to_dict(orient='records')
