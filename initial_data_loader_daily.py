@@ -1,4 +1,4 @@
-# backend/initial_data_loader_daily.py (Finale Version mit korrektem Gold-Ticker)
+# backend/initial_data_loader_daily.py (Finale, robuste Version)
 import yfinance as yf
 from datetime import datetime
 from sqlalchemy.dialects.postgresql import insert
@@ -6,19 +6,12 @@ import pandas as pd
 
 from database import engine, historical_data_daily
 
-# --- EINSTELLUNGEN ---
-# Wir definieren die Ticker, wie yfinance sie kennt.
-# 'GC=F' ist der korrekte Ticker für Gold-Futures.
 SYMBOLS_TO_FETCH = {
     "BTC-USD": "BTC/USD",
-    "GC=F": "XAU/USD"  # <-- KORREKTUR: Richtiger Ticker für Gold
+    "GC=F": "XAU/USD"
 }
 
 def load_all_historical_data():
-    """
-    Lädt historische TAGES-Daten für die definierten Symbole von yfinance
-    und speichert sie in der Datenbank.
-    """
     print("Starte den Download der historischen Daten von der yfinance API...")
     
     with engine.connect() as conn:
@@ -26,23 +19,19 @@ def load_all_historical_data():
             print(f"\n--- Verarbeite Symbol: {ticker} (wird als {db_symbol} gespeichert) ---")
             
             try:
-                # Lade die maximal verfügbare Menge an täglichen Daten
-                data = yf.download(ticker, period="max", interval="1d", auto_adjust=True)
+                data = yf.download(ticker, period="max", interval="1d", auto_adjust=True, progress=False)
                 
                 if data.empty:
-                    print(f"Keine Daten für {ticker} gefunden. Überspringe.")
+                    print(f"Keine Daten für {ticker} gefunden.")
                     continue
 
-                # Daten für die Datenbank vorbereiten
                 data.reset_index(inplace=True)
                 data.rename(columns={
                     'Date': 'timestamp', 'Open': 'open', 'High': 'high', 
                     'Low': 'low', 'Close': 'close', 'Volume': 'volume'
                 }, inplace=True)
                 
-                # Wir weisen das korrekte, interne Symbol zu
                 data['symbol'] = db_symbol
-                
                 data = data[['timestamp', 'symbol', 'open', 'high', 'low', 'close', 'volume']]
                 data.dropna(inplace=True)
 
@@ -50,12 +39,15 @@ def load_all_historical_data():
                 if not records:
                     continue
                     
-                print(f"Füge {len(records)} Datensätze für {db_symbol} in die Datenbank ein...")
+                print(f"Füge {len(records)} Datensätze für {db_symbol} Zeile für Zeile ein (das kann dauern)...")
                 
-                # Bulk-Insert für bessere Performance
-                stmt = insert(historical_data_daily).values(records)
-                stmt = stmt.on_conflict_do_nothing(index_elements=['timestamp', 'symbol'])
-                conn.execute(stmt)
+                # FINALE KORREKTUR: Wir fügen die Daten Zeile für Zeile ein, um Treiber-Probleme zu umgehen.
+                for record in records:
+                    stmt = insert(historical_data_daily).values(record)
+                    stmt = stmt.on_conflict_do_nothing(index_elements=['timestamp', 'symbol'])
+                    conn.execute(stmt)
+                
+                # Wichtig: Die Transaktion am Ende committen
                 conn.commit()
                 
                 print(f"Daten für {db_symbol} erfolgreich importiert.")
