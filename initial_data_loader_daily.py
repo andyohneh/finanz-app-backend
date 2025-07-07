@@ -1,4 +1,4 @@
-# backend/initial_data_loader_daily.py (Die absolut finale Version)
+# backend/initial_data_loader_daily.py (Die finale, korrigierte Logik)
 import yfinance as yf
 from sqlalchemy import text
 import pandas as pd
@@ -11,31 +11,44 @@ SYMBOLS_TO_FETCH = {
 }
 
 def load_all_historical_data():
-    print("Starte den Download der historischen Daten (finaler, robuster Modus)...")
+    """
+    Lädt historische Daten und schreibt sie mit der korrekten Logik
+    in die Datenbank, um alle Fehler zu umgehen.
+    """
+    print("Starte den Download der historischen Daten (finale Logik)...")
 
     with engine.connect() as conn:
         for ticker, db_symbol in SYMBOLS_TO_FETCH.items():
             print(f"\n--- Verarbeite Symbol: {ticker} ---")
 
             try:
-                data = yf.download(ticker, period="max", interval="1d", progress=False)
+                # Schritt 1: Daten laden
+                data = yf.download(ticker, period="max", interval="1d", progress=False, auto_adjust=False)
 
                 if data.empty:
                     print(f"Keine Daten für {ticker} gefunden.")
                     continue
 
-                # FINALE, ENTSCHEIDENDE KORREKTUR:
-                # Wir greifen auf die erste Ebene der Spaltennamen zu, um Tupel zu vermeiden.
-                data.columns = data.columns.get_level_values(0)
-                # Und JETZT konvertieren wir sie zu Kleinbuchstaben.
-                data.columns = [col.lower() for col in data.columns]
-
-
+                # Schritt 2: Den Datums-Index in eine Spalte umwandeln
+                # yfinance erstellt eine Spalte 'Date'
                 data.reset_index(inplace=True)
-                data.rename(columns={'date': 'timestamp'}, inplace=True)
+
+                # Schritt 3: Spaltennamen bereinigen und umbenennen
+                data.rename(columns={
+                    'Date': 'timestamp',
+                    'Open': 'open',
+                    'High': 'high',
+                    'Low': 'low',
+                    'Close': 'close',
+                    'Volume': 'volume'
+                }, inplace=True)
                 
+                # Schritt 4: Das interne Symbol zuweisen
                 data['symbol'] = db_symbol
-                data = data[['timestamp', 'symbol', 'open', 'high', 'low', 'close', 'volume']]
+                
+                # Schritt 5: Sicherstellen, dass alle nötigen Spalten da sind
+                required_columns = ['timestamp', 'symbol', 'open', 'high', 'low', 'close', 'volume']
+                data = data[required_columns]
                 data.dropna(inplace=True)
 
                 records = data.to_dict(orient='records')
