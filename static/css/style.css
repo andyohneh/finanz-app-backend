@@ -257,3 +257,34 @@ body {
     color: var(--red-color);
     font-weight: bold;
 }
+
+/* --- NEU: Strategie-Tabs --- */
+.strategy-tabs {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 30px;
+    background-color: var(--card-background);
+    border-radius: 8px;
+    padding: 5px;
+    border: 1px solid var(--border-color);
+}
+.strategy-tab {
+    padding: 10px 25px;
+    border: none;
+    background-color: transparent;
+    color: var(--text-secondary-color);
+    font-size: 1.1em;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.3s, color 0.3s;
+    border-radius: 5px;
+}
+.strategy-tab:hover {
+    background-color: #333;
+    color: var(--text-color);
+}
+.strategy-tab.active {
+    background-color: var(--accent-color);
+    color: white;
+    box-shadow: 0 0 10px rgba(0, 123, 255, 0.5);
+}

@@ -21,11 +21,16 @@ historical_data_daily = Table(
 )
 
 # Bestehende Tabelle für die letzten Vorhersagen
-predictions = Table('predictions', meta, 
-    Column('id', Integer, primary_key=True), Column('symbol', String(10), nullable=False, unique=True),
-    Column('signal', String(10), nullable=False), Column('entry_price', Float, nullable=False),
-    Column('take_profit', Float, nullable=True), Column('stop_loss', Float, nullable=True),
-    Column('last_updated', DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+predictions = Table('predictions', meta,
+    Column('id', Integer, primary_key=True),
+    Column('symbol', String(10), nullable=False),
+    Column('strategy', String(50), nullable=False), # NEUE SPALTE
+    Column('signal', String(10), nullable=False),
+    Column('entry_price', Float, nullable=False),
+    Column('take_profit', Float, nullable=True),
+    Column('stop_loss', Float, nullable=True),
+    Column('last_updated', DateTime, default=datetime.utcnow),
+    UniqueConstraint('symbol', 'strategy', name='uq_symbol_strategy') # NEUER UNIQUE KEY
 )
 
 # Bestehende Tabelle für Push-Benachrichtigungen

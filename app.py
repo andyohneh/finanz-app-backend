@@ -37,12 +37,19 @@ def dashboard():
 
 @app.route('/api/assets')
 def get_assets():
-    """Holt die fertigen Live-Signale aus der 'predictions'-Tabelle."""
+    """
+    Holt die fertigen Live-Signale für eine gegebene Strategie.
+    Standard ist 'daily'.
+    """
+    # Lese die Strategie aus dem URL-Parameter, Standard ist 'daily'
+    strategy = request.args.get('strategy', 'daily')
+    
     assets_data = []
     try:
         with engine.connect() as conn:
-            query = text("SELECT * FROM predictions ORDER BY symbol")
-            db_results = conn.execute(query).fetchall()
+            # NEU: Query filtert nach der angeforderten Strategie
+            query = text("SELECT * FROM predictions WHERE strategy = :strategy ORDER BY symbol")
+            db_results = conn.execute(query, {"strategy": strategy}).fetchall()
 
             for row in db_results:
                 prediction = row._asdict()

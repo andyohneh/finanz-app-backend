@@ -25,7 +25,6 @@
       rel="stylesheet"
       href="{{ url_for('static', filename='css/style.css') }}"
     />
-
     <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
   </head>
   <body>
@@ -44,6 +43,13 @@
       </header>
 
       <main>
+        <div class="strategy-tabs">
+          <button class="strategy-tab active" data-strategy="daily">
+            Daily
+          </button>
+          <button class="strategy-tab" data-strategy="swing">Swing</button>
+          <button class="strategy-tab" data-strategy="genius">Genius</button>
+        </div>
         <div class="signal-cards-container"></div>
       </main>
 
@@ -69,12 +75,15 @@
         const closeModal = document.querySelector(".close-button");
         const chartContainer = document.getElementById("chart-container");
         const chartAssetTitle = document.getElementById("chart-asset-title");
+        const strategyTabs = document.querySelectorAll(".strategy-tab");
 
-        // Diese Variable wird die ApexCharts-Instanz halten
         let chart = null;
+        let currentStrategy = "daily"; // Start-Strategie
 
-        function fetchSignalData() {
-          fetch("/api/assets")
+        // Funktion, die Signale für eine bestimmte Strategie abruft
+        function fetchSignalData(strategy) {
+          signalCardsContainer.innerHTML = '<div class="loader"></div>';
+          fetch(`/api/assets?strategy=${strategy}`)
             .then((response) => {
               if (!response.ok)
                 throw new Error(`HTTP-Fehler! Status: ${response.status}`);
@@ -82,14 +91,16 @@
             })
             .then((data) => {
               signalCardsContainer.innerHTML = "";
+              if (data.length === 0) {
+                signalCardsContainer.innerHTML =
+                  '<p class="error-msg">Keine Signale für diese Strategie verfügbar.</p>';
+                return;
+              }
               data.forEach((asset) => {
                 const card = document.createElement("div");
                 card.className = `signal-card ${asset.color}`;
                 card.innerHTML = `
-                            <div class="card-header">
-                                <span class="asset-name">${asset.asset}</span>
-                                <span class="material-icons icon">${asset.icon}</span>
-                            </div>
+                            <div class="card-header"><span class="asset-name">${asset.asset}</span><span class="material-icons icon">${asset.icon}</span></div>
                             <div class="card-body">
                                 <div class="trade-info"><strong>Signal:</strong> ${asset.signal}</div>
                                 <div class="trade-info"><strong>Einstieg:</strong> ${asset.entry}</div>
@@ -105,30 +116,40 @@
               });
             })
             .catch((error) => {
-              console.error("Fehler beim Laden der Signaldaten:", error);
+              console.error(
+                `Fehler beim Laden der ${strategy}-Signale:`,
+                error
+              );
               signalCardsContainer.innerHTML =
                 '<p class="error-msg">Signale konnten nicht geladen werden.</p>';
             });
         }
 
+        // Event-Listener für die Tabs
+        strategyTabs.forEach((tab) => {
+          tab.addEventListener("click", () => {
+            // Aktiven Status aktualisieren
+            strategyTabs.forEach((t) => t.classList.remove("active"));
+            tab.classList.add("active");
+
+            // Neue Strategie laden
+            currentStrategy = tab.dataset.strategy;
+            fetchSignalData(currentStrategy);
+          });
+        });
+
         function openChartModal(symbol) {
+          // ... (diese Funktion bleibt unverändert)
           chartAssetTitle.textContent = `${symbol} Chart (Täglich)`;
           modal.style.display = "block";
 
-          // Zerstöre die alte Chart-Instanz, falls vorhanden
           if (chart) {
             chart.destroy();
             chart = null;
           }
-
           chartContainer.innerHTML = '<div class="loader"></div>';
-
           fetch(`/historical-data/${symbol}`)
-            .then((response) => {
-              if (!response.ok)
-                throw new Error("Netzwerkantwort war nicht ok.");
-              return response.json();
-            })
+            .then((response) => response.json())
             .then((data) => {
               chartContainer.innerHTML = "";
               if (!data || data.length === 0 || data.error) {
@@ -136,45 +157,24 @@
                   '<p class="error-msg">Keine Chart-Daten verfügbar.</p>';
                 return;
               }
-
-              // Daten für ApexCharts umformatieren
               const seriesData = data.map((dp) => ({
                 x: new Date(dp.time).getTime(),
                 y: [dp.open, dp.high, dp.low, dp.close],
               }));
-
               const options = {
-                series: [
-                  {
-                    name: "Kurs",
-                    data: seriesData,
-                  },
-                ],
+                series: [{ name: "Kurs", data: seriesData }],
                 chart: {
                   type: "candlestick",
                   height: 400,
                   toolbar: { show: true },
                   background: "transparent",
                 },
-                theme: {
-                  mode: "dark",
-                },
-                title: {
-                  text: `${symbol} Candlestick Chart`,
-                  align: "left",
-                },
-                xaxis: {
-                  type: "datetime",
-                },
-                yaxis: {
-                  tooltip: { enabled: true },
-                },
-                tooltip: {
-                  theme: "dark",
-                },
+                theme: { mode: "dark" },
+                title: { text: `${symbol} Candlestick Chart`, align: "left" },
+                xaxis: { type: "datetime" },
+                yaxis: { tooltip: { enabled: true } },
+                tooltip: { theme: "dark" },
               };
-
-              // Neuen ApexChart erstellen und rendern
               chart = new ApexCharts(chartContainer, options);
               chart.render();
             })
@@ -192,8 +192,8 @@
           if (event.target == modal) modal.style.display = "none";
         };
 
-        fetchSignalData();
-        setInterval(fetchSignalData, 60000);
+        // Initiale Signale für die 'daily' Strategie laden
+        fetchSignalData(currentStrategy);
       });
     </script>
   </body>

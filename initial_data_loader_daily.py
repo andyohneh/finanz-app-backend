@@ -1,4 +1,4 @@
-# backend/initial_data_loader_daily.py (Die finale, korrekte API-Version)
+# backend/initial_data_loader_daily.py (Finale Version für BTC & XAU)
 import yfinance as yf
 from datetime import datetime
 from sqlalchemy.dialects.postgresql import insert
@@ -8,36 +8,28 @@ import pandas as pd
 from database import engine, historical_data_daily
 
 # --- EINSTELLUNGEN ---
-# Hier kannst du alle Symbole eintragen, die du für deine App benötigst.
-# yfinance verwendet Bindestriche.
-SYMBOLS = [
-    "BTC-USD", "ETH-USD", "ADA-USD", "SOL-USD", "AVAX-USD",
-    "MATIC-USD", "DOT-USD", "LINK-USD", "UNI-USD", "XRP-USD", "XAU-USD"
-]
+# KORREKTUR: Wir laden nur noch die gewünschten Symbole
+SYMBOLS = ["BTC-USD", "XAU-USD"]
 
 def load_all_historical_data():
     """
-    Lädt eine große Menge an historischen TÄGLICHEN Daten für alle Symbole
-    von yfinance und speichert sie in der Datenbank.
-    Bestehende Einträge werden dank 'ON CONFLICT DO NOTHING' ignoriert.
+    Lädt historische TAGES-Daten für die definierten Symbole von yfinance
+    und speichert sie in der Datenbank.
     """
-    print("Starte den Download aller historischen Daten von der yfinance API...")
+    print("Starte den Download der historischen Daten von der yfinance API...")
     
     with engine.connect() as conn:
         for ticker in SYMBOLS:
-            # Das Datenbankformat verwendet einen Schrägstrich
             db_symbol = ticker.replace('-', '/')
             print(f"\n--- Verarbeite Symbol: {ticker} ---")
             
             try:
-                # Lade die maximal verfügbare Menge an täglichen Daten von der API
                 data = yf.download(ticker, period="max", interval="1d")
                 
                 if data.empty:
                     print(f"Keine Daten für {ticker} gefunden. Überspringe.")
                     continue
 
-                # Daten für die Datenbank vorbereiten
                 data.reset_index(inplace=True)
                 data.rename(columns={
                     'Date': 'timestamp', 'Open': 'open', 'High': 'high', 
@@ -45,18 +37,15 @@ def load_all_historical_data():
                 }, inplace=True)
                 
                 data['symbol'] = db_symbol
-                
                 data = data[['timestamp', 'symbol', 'open', 'high', 'low', 'close', 'volume']]
                 data.dropna(inplace=True)
 
                 records = data.to_dict(orient='records')
                 if not records:
-                    print(f"Keine validen Datensätze für {ticker} zum Einfügen.")
                     continue
                     
                 print(f"Füge {len(records)} Datensätze für {db_symbol} in die Datenbank ein...")
                 
-                # Benutze eine Bulk-Insert-Methode für bessere Performance
                 stmt = insert(historical_data_daily).values(records)
                 stmt = stmt.on_conflict_do_nothing(index_elements=['timestamp', 'symbol'])
                 conn.execute(stmt)
