@@ -1,4 +1,4 @@
-# backend/initial_data_loader_daily.py (The final solution)
+# backend/initial_data_loader_daily.py (Die absolut finale Version)
 import yfinance as yf
 from sqlalchemy import text
 import pandas as pd
@@ -11,11 +11,7 @@ SYMBOLS_TO_FETCH = {
 }
 
 def load_all_historical_data():
-    """
-    Lädt historische Daten und schreibt sie mit einem direkten SQL-Befehl
-    in die Datenbank, um alle Treiberprobleme zu umgehen.
-    """
-    print("Starte den Download der historischen Daten (finaler Modus)...")
+    print("Starte den Download der historischen Daten (finaler, robuster Modus)...")
 
     with engine.connect() as conn:
         for ticker, db_symbol in SYMBOLS_TO_FETCH.items():
@@ -28,9 +24,12 @@ def load_all_historical_data():
                     print(f"Keine Daten für {ticker} gefunden.")
                     continue
 
-                # DAS IST DIE ENTSCHEIDENDE KORREKTUR:
-                # Wir stellen sicher, dass die Spaltennamen einfache Strings sind.
+                # FINALE, ENTSCHEIDENDE KORREKTUR:
+                # Wir greifen auf die erste Ebene der Spaltennamen zu, um Tupel zu vermeiden.
+                data.columns = data.columns.get_level_values(0)
+                # Und JETZT konvertieren wir sie zu Kleinbuchstaben.
                 data.columns = [col.lower() for col in data.columns]
+
 
                 data.reset_index(inplace=True)
                 data.rename(columns={'date': 'timestamp'}, inplace=True)
