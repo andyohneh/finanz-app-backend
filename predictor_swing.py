@@ -1,4 +1,4 @@
-# backend/predictor_swing.py (Finale, korrigierte Version)
+# backend/predictor_swing.py
 import pandas as pd
 import joblib
 import ta
@@ -9,58 +9,38 @@ def get_prediction(df, model_path):
         df = df.copy()
         df = dropna(df)
 
-        # 1. Feature Engineering
-        df['SMA_50'] = ta.trend.sma_indicator(df['close'], window=50)
-        df['EMA_20'] = ta.trend.ema_indicator(df['close'], window=20)
+        # Feature Engineering - EXAKT wie beim Training des Swing-Modells
         df['RSI'] = ta.momentum.rsi(df['close'], window=14)
-        df['BB_width'] = ta.volatility.bollinger_wband(df['close'], window=20, window_dev=2)
+        df['SMA_20'] = ta.trend.sma_indicator(df['close'], window=20)
+        df['EMA_50'] = ta.trend.ema_indicator(df['close'], window=50)
+        df['BB_Width'] = ta.volatility.bollinger_wband(df['close'], window=20, window_dev=2)
         df.dropna(inplace=True)
 
-        if df.empty:
-            return {'error': 'Nicht genügend Daten nach Feature Engineering.'}
+        if df.empty: return {'error': 'Nicht genügend Daten.'}
 
-        # 2. Modell laden
-        model = joblib.load(model_path)
+        model_data = joblib.load(model_path)
+        model = model_data['model']
+        scaler = model_data['scaler']
         
-        # 3. Features für die Vorhersage vorbereiten
-        features = ['open', 'high', 'low', 'close', 'volume', 'SMA_50', 'EMA_20', 'RSI', 'BB_width']
-        
+        features = ['RSI', 'SMA_20', 'EMA_50', 'BB_Width']
+
         if not all(feature in df.columns for feature in features):
-            return {'error': 'Einige Features fehlen im DataFrame.'}
-            
+            return {'error': f'Features fehlen: {features}'}
+
         X_predict = df[features].tail(1)
-
-        if X_predict.empty:
-            return {'error': 'Keine Daten für die Vorhersage vorhanden.'}
-
-        # 4. Vorhersage treffen
-        prediction = model.predict(X_predict)
+        X_scaled = scaler.transform(X_predict)
         
-        # KORREKTUR: Das Ergebnis ist ein Array, wir brauchen das erste Element.
+        prediction = model.predict(X_scaled)
         signal_code = prediction[0]
         
         signal_map = {0: "Verkaufen", 1: "Kaufen", 2: "Halten"}
         signal = signal_map.get(signal_code, "Unbekannt")
 
-        # 5. Trade-Parameter berechnen
-        last_row = df.iloc[-1]
-        entry_price = last_row['close']
-        
-        if signal == "Kaufen":
-            take_profit = entry_price * 1.10
-            stop_loss = entry_price * 0.95
-        elif signal == "Verkaufen":
-            take_profit = entry_price * 0.90
-            stop_loss = entry_price * 1.05
-        else: # Halten
-            take_profit = None
-            stop_loss = None
+        entry_price = df.iloc[-1]['close']
+        # Hier kannst du deine spezifische TP/SL-Logik für Swing einfügen
+        take_profit = entry_price * 1.10 if signal == "Kaufen" else entry_price * 0.90 if signal == "Verkaufen" else None
+        stop_loss = entry_price * 0.95 if signal == "Kaufen" else entry_price * 1.05 if signal == "Verkaufen" else None
 
-        return {
-            'signal': signal,
-            'entry_price': entry_price,
-            'take_profit': take_profit,
-            'stop_loss': stop_loss
-        }
+        return {'signal': signal, 'entry_price': entry_price, 'take_profit': take_profit, 'stop_loss': stop_loss}
     except Exception as e:
         return {'error': f'Fehler in predictor_swing: {e}'}
