@@ -1,5 +1,6 @@
 # backend/train_models.py
 import pandas as pd
+import numpy as np
 import joblib
 import os
 import ta
