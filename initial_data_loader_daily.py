@@ -1,4 +1,4 @@
-# backend/initial_data_loader_daily.py (Die definitive, korrekte CSV-Version)
+# backend/initial_data_loader_daily.py (Die finale, korrekte Lösung)
 import os
 import pandas as pd
 from sqlalchemy import text
@@ -9,10 +9,10 @@ DATA_DIR = "data/daily"
 
 def load_all_historical_data():
     """
-    Lädt historische Daten aus den lokalen CSV-Dateien in die Datenbank
-    und behandelt den Datums-Index korrekt.
+    Lädt historische Daten aus den lokalen CSV-Dateien und liest
+    die erste Spalte als den korrekten Datums-Index.
     """
-    print("Starte den Daten-Import aus den CSV-Dateien (definitiver Modus)...")
+    print("Starte den Daten-Import aus den CSV-Dateien (finale Lösung)...")
 
     if not os.path.exists(DATA_DIR):
         print(f"FEHLER: Das Datenverzeichnis '{DATA_DIR}' wurde nicht gefunden.")
@@ -27,16 +27,17 @@ def load_all_historical_data():
                 print(f"\n--- Verarbeite Datei: {filename} für Symbol {db_symbol} ---")
                 
                 try:
-                    # SCHRITT 1: Lese die CSV und erkenne die 'Date'-Spalte als Index
-                    df = pd.read_csv(filepath, index_col='Date', parse_dates=True)
+                    # DIE FINALE, ENTSCHEIDENDE KORREKTUR:
+                    # Wir sagen pandas, die ERSTE SPALTE (index_col=0) als Index zu verwenden.
+                    df = pd.read_csv(filepath, index_col=0, parse_dates=True)
                     
-                    # SCHRITT 2: Wandle den Index in eine normale Spalte um.
-                    # Diese Spalte wird jetzt korrekt 'Date' heißen.
+                    # JETZT können wir den Index sicher in eine Spalte umwandeln.
+                    # Diese Spalte wird automatisch "index" heißen.
                     df.reset_index(inplace=True)
 
-                    # SCHRITT 3: Benenne die Spalten um. JETZT wird 'Date' zu 'timestamp'.
+                    # Und JETZT benennen wir sie um.
                     df.rename(columns={
-                        'Date': 'timestamp', 'Open': 'open', 'High': 'high',
+                        'index': 'timestamp', 'Open': 'open', 'High': 'high',
                         'Low': 'low', 'Close': 'close', 'Volume': 'volume'
                     }, inplace=True)
                     
