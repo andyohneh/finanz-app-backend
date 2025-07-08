@@ -75,4 +75,4 @@ def load_all_historical_data():
     print("\n✅ Alle CSV-Daten wurden erfolgreich in die Datenbank importiert!")
 
 if __name__ == "__main__":
-    load_all_historical_data()
+    load_all_historical_data()      
