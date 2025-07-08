@@ -1,4 +1,4 @@
-# backend/run_predictor.py (Finale Version mit Strategie-Speicherung)
+# backend/run_predictor.py (Finale Version mit größerem Daten-Limit)
 import argparse
 import pandas as pd
 from sqlalchemy import text
@@ -12,11 +12,14 @@ import predictor_genius
 
 SYMBOLS_TO_PROCESS = ['BTC/USD', 'XAU/USD']
 PREDICTOR_MAPPING = {
-    'daily': predictor_daily, 'swing': predictor_swing, 'genius': predictor_genius
+    'daily': predictor_daily,
+    'swing': predictor_swing,
+    'genius': predictor_genius
 }
 
 def generate_and_store_predictions(strategy):
     print(f"=== Starte Generator für '{strategy.upper()}' Live-Signale ===")
+    
     predictor_module = PREDICTOR_MAPPING.get(strategy)
     if not predictor_module:
         print(f"FEHLER: Unbekannte Strategie '{strategy}'.")
@@ -30,21 +33,23 @@ def generate_and_store_predictions(strategy):
             model_path = f"models/model_{strategy}_{symbol_filename}.pkl"
             print(f"Verwende Modell: {model_path}")
 
-            query = text("SELECT * FROM historical_data_daily WHERE symbol = :symbol ORDER BY timestamp DESC LIMIT 200")
+            # KORREKTUR: Wir laden mehr Daten für die Berechnung langer Indikatoren
+            query = text("SELECT * FROM historical_data_daily WHERE symbol = :symbol ORDER BY timestamp DESC LIMIT 300")
             df = pd.read_sql_query(query, conn, params={'symbol': symbol})
             
-            if df.empty or len(df) < 50:
+            if df.empty or len(df) < 250: # Sicherheits-Check
                 print(f"Nicht genügend Daten für {symbol}.")
                 continue
 
             df = df.sort_values(by='timestamp').reset_index(drop=True)
+            
+            # Hier war der Fehler in der alten Version. Wir übergeben nur df und model_path
             prediction_result = predictor_module.get_prediction(df, model_path)
             
             if 'error' in prediction_result:
                 print(f"Fehler: {prediction_result['error']}")
                 continue
             
-            # NEU: 'strategy'-Feld zum Datensatz hinzufügen
             update_data = {
                 'symbol': symbol,
                 'strategy': strategy,
@@ -55,7 +60,6 @@ def generate_and_store_predictions(strategy):
                 'last_updated': datetime.now(timezone.utc)
             }
 
-            # Upsert basierend auf dem neuen Unique Key (symbol, strategy)
             stmt = insert(predictions).values(update_data)
             stmt = stmt.on_conflict_do_update(
                 index_elements=['symbol', 'strategy'],
