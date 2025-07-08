@@ -1,6 +1,6 @@
-# backend/train_models.py
+# backend/train_models.py (Finale Version mit korrektem NumPy-Import)
 import pandas as pd
-import numpy as np
+import numpy as np  # <-- KORREKTUR: NumPy direkt importieren
 import joblib
 import os
 import ta
@@ -52,14 +52,11 @@ def create_target(df, period=5):
         (df['future_return'] < -0.02),
     ]
     choices = [1, 0] # 1 für Kaufen, 0 für Verkaufen
-    df['target'] = pd.np.select(conditions, choices, default=2) # 2 für Halten
+    # KORREKTUR: Wir verwenden 'np.select' anstatt 'pd.np.select'
+    df['target'] = np.select(conditions, choices, default=2) # 2 für Halten
     return df
 
 def train_and_save_models():
-    """
-    Lädt Daten, trainiert Modelle für jede Strategie und jedes Symbol und speichert sie.
-    """
-    # Sicherstellen, dass der 'models'-Ordner existiert
     os.makedirs('models', exist_ok=True)
     
     with engine.connect() as conn:
@@ -76,7 +73,6 @@ def train_and_save_models():
                 print(f"\n--- Trainiere Modell für Strategie: '{strategy_name.upper()}' ---")
                 
                 try:
-                    # 1. Features & Target erstellen
                     df = config['feature_func'](df_raw.copy())
                     df = create_target(df)
                     df.dropna(inplace=True)
@@ -89,22 +85,18 @@ def train_and_save_models():
                         print("Nicht genügend Daten nach Feature Engineering.")
                         continue
 
-                    # 2. Daten aufteilen und skalieren
                     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
                     scaler = StandardScaler()
                     X_train_scaled = scaler.fit_transform(X_train)
                     X_test_scaled = scaler.transform(X_test)
 
-                    # 3. Modell trainieren
                     model = RandomForestClassifier(n_estimators=100, random_state=42, class_weight='balanced')
                     model.fit(X_train_scaled, y_train)
 
-                    # 4. Genauigkeit prüfen
                     y_pred = model.predict(X_test_scaled)
                     accuracy = accuracy_score(y_test, y_pred)
                     print(f"Modell-Genauigkeit (Accuracy): {accuracy:.2f}")
 
-                    # 5. Modell UND Scaler zusammen speichern
                     symbol_filename = symbol.replace('/', '')
                     model_path = f"models/model_{strategy_name}_{symbol_filename}.pkl"
                     
