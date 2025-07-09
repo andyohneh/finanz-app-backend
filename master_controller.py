@@ -93,6 +93,54 @@ def train_all_models():
                     print(f"Ein FEHLER ist aufgetreten: {e}")
     print("\n=== MODELL-TRAINING ABGESCHLOSSEN ===")
 
+
+def backtest_all_models(): # HIER IST DIE FEHLENDE FUNKTION
+    print("=== STARTE BACKTESTING ===")
+    all_results = {'daily': [], 'swing': [], 'genius': []}
+    with engine.connect() as conn:
+        for symbol in SYMBOLS:
+            print(f"\nLade Daten für Backtest von {symbol}...")
+            query = text("SELECT * FROM historical_data_daily WHERE symbol = :symbol ORDER BY timestamp")
+            df_symbol = pd.read_sql_query(query, conn, params={'symbol': symbol})
+            if df_symbol.empty:
+                print(f"Keine Daten für {symbol}.")
+                continue
+
+            for name, config in STRATEGIES.items():
+                print(f"-- Starte Backtest für {name.upper()}...")
+                try:
+                    model_path = f"models/model_{name}_{symbol.replace('/', '')}.pkl"
+                    if not os.path.exists(model_path):
+                        print(f"Modell {model_path} nicht gefunden.")
+                        continue
+                    
+                    model_data = joblib.load(model_path)
+                    model, scaler, features = model_data['model'], model_data['scaler'], model_data['features']
+                    
+                    df_features = config['feature_func'](df_symbol.copy())
+                    df_features.dropna(inplace=True)
+                    
+                    X = df_features[features]
+                    X_scaled = scaler.transform(X)
+                    df_features['signal'] = model.predict(X_scaled)
+                    
+                    df_features['daily_return'] = df_features['close'].pct_change()
+                    df_features['strategy_return'] = np.where(df_features['signal'] == 1, df_features['daily_return'].shift(-1), np.where(df_features['signal'] == 0, -df_features['daily_return'].shift(-1), 0))
+                    
+                    trades = df_features[df_features['signal'] != 2]
+                    total_return_pct = (df_features['strategy_return'].sum() * 100)
+                    win_rate = (len(trades[trades['strategy_return'] > 0]) / len(trades) * 100) if not trades.empty else 0
+                    
+                    all_results[name].append({'Symbol': symbol, 'Gesamtrendite_%': round(total_return_pct, 2), 'Gewinnrate_%': round(win_rate, 2), 'Anzahl_Trades': len(trades)})
+                    print(f"Ergebnis: {total_return_pct:.2f}% Rendite, {win_rate:.2f}% Gewinnrate")
+                except Exception as e:
+                    print(f"Ein FEHLER ist aufgetreten: {e}")
+
+    with open('backtest_results.json', 'w') as f:
+        json.dump(all_results, f, indent=4)
+    print("\n✅ Backtest abgeschlossen und Ergebnisse gespeichert.")
+
+
 def predict_all_signals():
     print("=== STARTE SIGNAL-GENERATOR ===")
     with engine.connect() as conn:
