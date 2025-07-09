@@ -1,9 +1,10 @@
-# backend/master_controller.py (Das einzige Skript, das du brauchst)
+# backend/master_controller.py (Finale All-in-One-Lösung)
 import pandas as pd
 import numpy as np
 import joblib
 import os
 import ta
+import json
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import StandardScaler
@@ -17,7 +18,6 @@ from database import engine, predictions
 # ==============================================================================
 # 1. ZENTRALE KONFIGURATION (ALLES AN EINEM ORT)
 # ==============================================================================
-
 SYMBOLS = ["BTC/USD", "XAU/USD"]
 
 STRATEGIES = {
@@ -51,14 +51,14 @@ STRATEGIES = {
 }
 
 # ==============================================================================
-# 2. TRAININGS-LOGIK
+# 2. FUNKTIONEN (TRAIN, BACKTEST, PREDICT)
 # ==============================================================================
 
 def create_target(df, period=5):
     df['future_return'] = df['close'].pct_change(period).shift(-period)
     conditions = [(df['future_return'] > 0.02), (df['future_return'] < -0.02)]
-    choices = [1, 0] # 1=Kaufen, 0=Verkaufen
-    df['target'] = np.select(conditions, choices, default=2) # 2=Halten
+    choices = [1, 0]
+    df['target'] = np.select(conditions, choices, default=2)
     return df
 
 def train_all_models():
@@ -79,17 +79,13 @@ def train_all_models():
                     df = config['feature_func'](df_raw.copy())
                     df = create_target(df)
                     df.dropna(inplace=True)
-
                     features = config['features']
                     X = df[features]
                     y = df['target']
-
                     X_train, _, y_train, _ = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
                     scaler = StandardScaler().fit(X_train)
                     X_train_scaled = scaler.transform(X_train)
-                    
                     model = RandomForestClassifier(n_estimators=100, random_state=42, class_weight='balanced').fit(X_train_scaled, y_train)
-                    
                     model_path = f"models/model_{name}_{symbol.replace('/', '')}.pkl"
                     joblib.dump({'model': model, 'scaler': scaler, 'features': features}, model_path)
                     print(f"✅ Modell erfolgreich gespeichert: {model_path}")
@@ -97,9 +93,53 @@ def train_all_models():
                     print(f"Ein FEHLER ist aufgetreten: {e}")
     print("\n=== MODELL-TRAINING ABGESCHLOSSEN ===")
 
-# ==============================================================================
-# 3. VORHERSAGE-LOGIK
-# ==============================================================================
+
+def backtest_all_models():
+    print("=== STARTE BACKTESTING ===")
+    all_results = {'daily': [], 'swing': [], 'genius': []}
+    with engine.connect() as conn:
+        for symbol in SYMBOLS:
+            print(f"\nLade Daten für Backtest von {symbol}...")
+            query = text("SELECT * FROM historical_data_daily WHERE symbol = :symbol ORDER BY timestamp")
+            df_symbol = pd.read_sql_query(query, conn, params={'symbol': symbol})
+            if df_symbol.empty:
+                print(f"Keine Daten für {symbol}.")
+                continue
+
+            for name, config in STRATEGIES.items():
+                print(f"-- Starte Backtest für {name.upper()}...")
+                try:
+                    model_path = f"models/model_{name}_{symbol.replace('/', '')}.pkl"
+                    if not os.path.exists(model_path):
+                        print(f"Modell {model_path} nicht gefunden.")
+                        continue
+                    
+                    model_data = joblib.load(model_path)
+                    model, scaler, features = model_data['model'], model_data['scaler'], model_data['features']
+                    
+                    df_features = config['feature_func'](df_symbol.copy())
+                    df_features.dropna(inplace=True)
+                    
+                    X = df_features[features]
+                    X_scaled = scaler.transform(X)
+                    df_features['signal'] = model.predict(X_scaled)
+                    
+                    df_features['daily_return'] = df_features['close'].pct_change()
+                    df_features['strategy_return'] = np.where(df_features['signal'] == 1, df_features['daily_return'].shift(-1), np.where(df_features['signal'] == 0, -df_features['daily_return'].shift(-1), 0))
+                    
+                    trades = df_features[df_features['signal'] != 2]
+                    total_return_pct = (df_features['strategy_return'].sum() * 100)
+                    win_rate = (len(trades[trades['strategy_return'] > 0]) / len(trades) * 100) if not trades.empty else 0
+                    
+                    all_results[name].append({'Symbol': symbol, 'Gesamtrendite_%': round(total_return_pct, 2), 'Gewinnrate_%': round(win_rate, 2), 'Anzahl_Trades': len(trades)})
+                    print(f"Ergebnis: {total_return_pct:.2f}% Rendite, {win_rate:.2f}% Gewinnrate")
+                except Exception as e:
+                    print(f"Ein FEHLER ist aufgetreten: {e}")
+
+    with open('backtest_results.json', 'w') as f:
+        json.dump(all_results, f, indent=4)
+    print("\n✅ Backtest abgeschlossen und Ergebnisse gespeichert.")
+
 
 def predict_all_signals():
     print("=== STARTE SIGNAL-GENERATOR ===")
@@ -109,7 +149,6 @@ def predict_all_signals():
             query = text("SELECT * FROM historical_data_daily WHERE symbol = :symbol ORDER BY timestamp DESC LIMIT 400")
             df_live = pd.read_sql_query(query, conn, params={'symbol': symbol})
             df_live = df_live.sort_values(by='timestamp').reset_index(drop=True)
-            
             if len(df_live) < 250:
                 print(f"Nicht genügend Live-Daten für {symbol}.")
                 continue
@@ -120,45 +159,40 @@ def predict_all_signals():
                     model_path = f"models/model_{name}_{symbol.replace('/', '')}.pkl"
                     model_data = joblib.load(model_path)
                     model, scaler, features = model_data['model'], model_data['scaler'], model_data['features']
-
+                    
                     df_features = config['feature_func'](df_live.copy())
                     df_features.dropna(inplace=True)
-
+                    
                     X_predict = df_features[features].tail(1)
                     X_scaled = scaler.transform(X_predict)
                     prediction = model.predict(X_scaled)
                     
-                    signal_code = int(prediction[0])
-                    signal = {0: "Verkaufen", 1: "Kaufen", 2: "Halten"}.get(signal_code, "Unbekannt")
-                    
+                    signal = {0: "Verkaufen", 1: "Kaufen", 2: "Halten"}.get(int(prediction[0]))
                     price = df_features.iloc[-1]['close']
                     
-                    update_data = {
-                        'symbol': symbol, 'strategy': name, 'signal': signal,
-                        'entry_price': price, 'take_profit': price * 1.05, 
-                        'stop_loss': price * 0.98, 'last_updated': datetime.now(timezone.utc)
-                    }
+                    update_data = {'symbol': symbol, 'strategy': name, 'signal': signal, 'entry_price': price, 'take_profit': price * 1.05, 'stop_loss': price * 0.98, 'last_updated': datetime.now(timezone.utc)}
                     
                     stmt = insert(predictions).values(update_data)
                     stmt = stmt.on_conflict_do_update(index_elements=['symbol', 'strategy'], set_=update_data)
                     conn.execute(stmt)
                     conn.commit()
                     print(f"✅ Signal erfolgreich gespeichert.")
-
                 except Exception as e:
                     print(f"Ein FEHLER ist aufgetreten: {e}")
     print("\n=== SIGNAL-GENERATOR ABGESCHLOSSEN ===")
 
+
 # ==============================================================================
 # 4. STEUERUNG
 # ==============================================================================
-
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Master-Controller für Training und Vorhersage.")
-    parser.add_argument("mode", choices=['train', 'predict'], help="Der auszuführende Modus: 'train' oder 'predict'.")
+    parser = argparse.ArgumentParser(description="Master-Controller für Training, Backtesting und Vorhersage.")
+    parser.add_argument("mode", choices=['train', 'backtest', 'predict'], help="Der auszuführende Modus.")
     args = parser.parse_args()
 
     if args.mode == 'train':
         train_all_models()
+    elif args.mode == 'backtest':
+        backtest_all_models()
     elif args.mode == 'predict':
         predict_all_signals()
