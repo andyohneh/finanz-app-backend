@@ -1,134 +1,99 @@
-# run_backtester.py
+# backend/run_backtester.py
 import pandas as pd
 import numpy as np
 import joblib
 import json
+import os
 from sqlalchemy import text
+
+# Importiere die Konfigurationen aus dem Master-Controller
+from master_controller import STRATEGIES, SYMBOLS
 from database import engine
 
-# Importiere die Feature-Funktionen aus den jeweiligen Trainern
-from ki_trainer_daily import add_features as add_daily_features
-from ki_trainer_swing import add_features as add_swing_features
-from ki_trainer_genius import add_features as add_genius_features
-
-# --- KONFIGURATION ---
-INITIAL_CAPITAL = 100
-SYMBOLS = ['BTC/USD', 'XAU/USD']
-STRATEGIES = {
-    'daily': {
-        'model_prefix': 'model_daily_',
-        'add_features': add_daily_features,
-        'features': ['sma_fast', 'sma_slow', 'rsi', 'macd_diff', 'bb_width', 'stoch_k', 'roc', 'atr', 'adx', 'cci', 'sentiment_score'],
-        'tp_factor': 2.0,
-        'sl_factor': 1.0
-    },
-    'swing': {
-        'model_prefix': 'model_swing_',
-        'add_features': add_swing_features,
-        'features': ['sma_fast', 'sma_slow', 'rsi', 'macd_diff', 'atr', 'sentiment_score'],
-        'tp_factor': 2.5,
-        'sl_factor': 1.5
-    },
-    'genius': {
-        'model_prefix': 'model_genius_',
-        'add_features': add_genius_features,
-        'features': ['sma_fast', 'sma_slow', 'rsi', 'macd_diff', 'atr', 'sentiment_score'],
-        'tp_factor': 2.5,
-        'sl_factor': 1.2
-    }
-}
-
-def load_data_from_db(symbol: str) -> pd.DataFrame:
-    """Lädt historische Preisdaten UND die dazugehörigen Sentiment-Scores."""
-    with engine.connect() as conn:
-        query = text("""
-            SELECT h.*, s.sentiment_score
-            FROM historical_data_daily h
-            LEFT JOIN daily_sentiment s ON h.symbol = s.asset AND DATE(h.timestamp) = DATE(s.date)
-            WHERE h.symbol = :symbol ORDER BY h.timestamp ASC
-        """)
-        df = pd.read_sql_query(query, conn, params={'symbol': symbol})
-        df['sentiment_score'] = df['sentiment_score'].fillna(0.0)
-        df['timestamp'] = pd.to_datetime(df['timestamp'])
-        return df
-
-def run_backtest(symbol, strategy_name):
-    print(f"Starte Backtest für {symbol} mit Strategie '{strategy_name}'...")
+def run_backtest_for_strategy(df_symbol, strategy_name, config):
+    """Führt einen Backtest für eine einzelne Strategie und ein Symbol durch."""
+    print(f"-- Starte Backtest für {strategy_name.upper()}...")
     
-    config = STRATEGIES[strategy_name]
-    model_path = f"models/{config['model_prefix']}{symbol.replace('/', '')}.pkl"
-    try:
-        model = joblib.load(model_path)
-    except FileNotFoundError:
-        print(f"Modell {model_path} nicht gefunden. Überspringe Backtest.")
+    # 1. Lade das passende Modell
+    symbol = df_symbol['symbol'].iloc[0]
+    model_path = f"models/model_{strategy_name}_{symbol.replace('/', '')}.pkl"
+    if not os.path.exists(model_path):
+        print(f"Modell {model_path} nicht gefunden.")
+        return None
+        
+    model_data = joblib.load(model_path)
+    model, scaler, features = model_data['model'], model_data['scaler'], model_data['features']
+
+    # 2. Berechne die Features für den gesamten Datensatz
+    df_features = config['feature_func'](df_symbol.copy())
+    df_features.dropna(inplace=True)
+
+    if not all(f in df_features.columns for f in features):
+        print("Fehlende Features im Datensatz.")
         return None
 
-    df = load_data_from_db(symbol)
-    df_featured = config['add_features'](df.copy())
+    # 3. Generiere Signale für den gesamten Zeitraum
+    X = df_features[features]
+    X_scaled = scaler.transform(X)
+    df_features['signal'] = model.predict(X_scaled)
+
+    # 4. Simuliere die Trades und berechne die Renditen
+    # Wir berechnen die prozentuale Veränderung von einem Tag zum nächsten
+    df_features['daily_return'] = df_features['close'].pct_change()
+
+    # Wenn das Signal "Kaufen" (1) war, nehmen wir die Rendite des nächsten Tages.
+    # Wenn das Signal "Verkaufen" (0) war, nehmen wir die negative Rendite (Short-Position).
+    df_features['strategy_return'] = np.where(df_features['signal'] == 1, df_features['daily_return'].shift(-1), 0)
+    df_features['strategy_return'] = np.where(df_features['signal'] == 0, -df_features['daily_return'].shift(-1), df_features['strategy_return'])
+
+    # 5. Berechne die Performance-Metriken
+    trades = df_features[df_features['signal'] != 2] # Nur Kauf/Verkauf-Signale sind Trades
+    if trades.empty:
+        return {'Symbol': symbol, 'Gesamtrendite_%': 0, 'Gewinnrate_%': 0, 'Anzahl_Trades': 0}
+
+    number_of_trades = len(trades)
+    winning_trades = trades[trades['strategy_return'] > 0]
+    win_rate = (len(winning_trades) / number_of_trades) * 100 if number_of_trades > 0 else 0
     
-    capital = INITIAL_CAPITAL
-    trades = []
-    position = None
-
-    for i in range(len(df_featured)):
-        current_row = df_featured.iloc[i]
-        
-        if position is None: # Keine offene Position, suche nach Einstieg
-            X_live = pd.DataFrame([current_row[config['features']]])
-            prediction = model.predict(X_live)[0]
-            
-            if prediction != 0: # Einstiegssignal
-                position = {'type': prediction, 'entry_price': current_row['close'], 'entry_date': current_row['timestamp']}
-                if prediction == 1: # Long
-                    position['stop_loss'] = current_row['close'] - (current_row['atr'] * config['sl_factor'])
-                    position['take_profit'] = current_row['close'] + (current_row['atr'] * config['tp_factor'])
-                else: # Short
-                    position['stop_loss'] = current_row['close'] + (current_row['atr'] * config['sl_factor'])
-                    position['take_profit'] = current_row['close'] - (current_row['atr'] * config['tp_factor'])
-
-        else: # Offene Position, prüfe auf Ausstieg
-            exit_reason = None
-            if position['type'] == 1: # Long
-                if current_row['low'] <= position['stop_loss']: exit_reason = 'Stop Loss'
-                elif current_row['high'] >= position['take_profit']: exit_reason = 'Take Profit'
-            else: # Short
-                if current_row['high'] >= position['stop_loss']: exit_reason = 'Stop Loss'
-                elif current_row['low'] <= position['take_profit']: exit_reason = 'Take Profit'
-            
-            if exit_reason:
-                exit_price = position['stop_loss'] if 'Stop Loss' in exit_reason else position['take_profit']
-                profit_percent = ((exit_price - position['entry_price']) / position['entry_price']) * position['type']
-                trades.append({'profit_percent': profit_percent})
-                capital *= (1 + profit_percent)
-                position = None
-
-    # Performance-Metriken berechnen
-    num_trades = len(trades)
-    if num_trades == 0: return {'Symbol': symbol, 'Gesamtrendite_%': 0, 'Gewinnrate_%': 0, 'Anzahl_Trades': 0}
-
-    win_rate = len([t for t in trades if t['profit_percent'] > 0]) / num_trades * 100
-    total_return = (capital / INITIAL_CAPITAL - 1) * 100
+    # Korrekte Berechnung der Gesamtrendite
+    cumulative_return = (1 + df_features['strategy_return']).cumprod()
+    total_return_pct = (cumulative_return.iloc[-1] - 1) * 100
+    
+    print(f"Ergebnis: {total_return_pct:.2f}% Rendite, {win_rate:.2f}% Gewinnrate")
 
     return {
         'Symbol': symbol,
-        'Gesamtrendite_%': round(total_return, 2),
+        'Gesamtrendite_%': round(total_return_pct, 2),
         'Gewinnrate_%': round(win_rate, 2),
-        'Anzahl_Trades': num_trades
+        'Anzahl_Trades': number_of_trades
     }
 
-if __name__ == "__main__":
-    final_results = {}
-    for strategy in STRATEGIES.keys():
-        strategy_results = []
+def main():
+    """Hauptfunktion zum Ausführen aller Backtests."""
+    all_results = {'daily': [], 'swing': [], 'genius': []}
+    
+    with engine.connect() as conn:
         for symbol in SYMBOLS:
-            result = run_backtest(symbol, strategy)
-            if result:
-                strategy_results.append(result)
-        final_results[strategy] = strategy_results
+            print(f"\n{'='*20}\nLade Daten für Backtest von {symbol}...\n{'='*20}")
+            query = text("SELECT * FROM historical_data_daily WHERE symbol = :symbol ORDER BY timestamp")
+            df_symbol = pd.read_sql_query(query, conn, params={'symbol': symbol})
 
-    # Speichere die Ergebnisse in einer einzigen JSON-Datei
-    with open('backtest_results.json', 'w', encoding='utf-8') as f:
-        json.dump(final_results, f, ensure_ascii=False, indent=4)
+            if df_symbol.empty:
+                print(f"Keine Daten für {symbol} gefunden.")
+                continue
+
+            df_symbol['symbol'] = symbol
+
+            for strategy_name, config in STRATEGIES.items():
+                result = run_backtest_for_strategy(df_symbol.copy(), strategy_name, config)
+                if result:
+                    all_results[strategy_name].append(result)
+
+    # Speichere die Ergebnisse in einer JSON-Datei
+    with open('backtest_results.json', 'w') as f:
+        json.dump(all_results, f, indent=4)
         
-    print("\nBacktest abgeschlossen. 'backtest_results.json' wurde erfolgreich erstellt.")
-    print("Dein Dashboard hat jetzt wieder Daten!")
+    print("\n✅ Backtest abgeschlossen und Ergebnisse in 'backtest_results.json' gespeichert.")
+
+if __name__ == '__main__':
+    main()
