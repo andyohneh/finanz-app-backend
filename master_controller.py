@@ -1,4 +1,4 @@
-# backend/master_controller.py (Finale All-in-One-Lösung)
+# backend/master_controller.py (Finale, reparierte Version)
 import pandas as pd
 import numpy as np
 import joblib
@@ -94,7 +94,7 @@ def train_all_models():
     print("\n=== MODELL-TRAINING ABGESCHLOSSEN ===")
 
 
-def backtest_all_models(): # HIER IST DIE FEHLENDE FUNKTION
+def backtest_all_models():
     print("=== STARTE BACKTESTING ===")
     all_results = {'daily': [], 'swing': [], 'genius': []}
     with engine.connect() as conn:
@@ -114,8 +114,12 @@ def backtest_all_models(): # HIER IST DIE FEHLENDE FUNKTION
                         print(f"Modell {model_path} nicht gefunden.")
                         continue
                     
+                    # HIER IST DIE FINALE KORREKTUR:
+                    # Wir laden die Kiste und packen sie korrekt aus.
                     model_data = joblib.load(model_path)
-                    model, scaler, features = model_data['model'], model_data['scaler'], model_data['features']
+                    model = model_data['model']
+                    scaler = model_data['scaler']
+                    features = model_data['features']
                     
                     df_features = config['feature_func'](df_symbol.copy())
                     df_features.dropna(inplace=True)
