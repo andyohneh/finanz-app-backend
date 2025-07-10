@@ -102,10 +102,13 @@ def train_all_models():
     print("\n=== MODELL-TRAINING ABGESCHLOSSEN ===")
 
 
+# In backend/master_controller.py -> die Funktion backtest_all_models ersetzen
+
 def backtest_all_models():
-    print("=== STARTE BACKTESTING ===")
+    print("=== STARTE BACKTESTING (FINALE BERECHNUNG) ===")
     all_results = {'daily': [], 'swing': [], 'genius': []}
     equity_curves = {'daily': {}, 'swing': {}, 'genius': {}}
+
     with engine.connect() as conn:
         for symbol in SYMBOLS:
             print(f"\nLade Daten für Backtest von {symbol}...")
@@ -128,21 +131,29 @@ def backtest_all_models():
                     X_scaled = scaler.transform(X)
                     df_features['signal'] = model.predict(X_scaled)
                     
-                    capital = INITIAL_CAPITAL
-                    equity_values = [INITIAL_CAPITAL]
-                    for i in range(1, len(df_features)):
-                        daily_return = (df_features['close'].iloc[i] - df_features['close'].iloc[i-1]) / df_features['close'].iloc[i-1]
-                        if df_features['signal'].iloc[i-1] == 1: capital *= (1 + daily_return)
-                        elif df_features['signal'].iloc[i-1] == 0: capital *= (1 - daily_return)
-                        equity_values.append(capital)
-                    df_features['equity_curve'] = equity_values
+                    # Berechne die Rendite basierend auf dem Signal des Vortages
+                    df_features['daily_return'] = df_features['close'].pct_change()
+                    df_features['strategy_return'] = np.where(df_features['signal'].shift(1) == 1, df_features['daily_return'], 0)
+                    df_features['strategy_return'] = np.where(df_features['signal'].shift(1) == 0, -df_features['daily_return'], df_features['strategy_return'])
                     
-                    equity_curves[name][symbol] = {'dates': df_features['timestamp'].dt.strftime('%Y-%m-%d').tolist(),'values': df_features['equity_curve'].round(2).tolist()}
-                    total_return_pct = ((capital - INITIAL_CAPITAL) / INITIAL_CAPITAL) * 100
-                    trades = df_features[df_features['signal'].diff() != 0]
+                    # Berechne die Equity-Kurve
+                    initial_capital = 100
+                    df_features['equity_curve'] = initial_capital * (1 + df_features['strategy_return']).cumprod()
+                    
+                    equity_curves[name][symbol] = {
+                        'dates': df_features['timestamp'].dt.strftime('%Y-%m-%d').tolist(),
+                        'values': df_features['equity_curve'].fillna(initial_capital).round(2).tolist()
+                    }
+
+                    # FINALE, REALISTISCHE BERECHNUNG DER RENDITE
+                    total_return_pct = df_features['strategy_return'].sum() * 100
+                    
+                    trades = df_features[df_features['signal'] != 2]
                     win_rate = 50.0 
+
                     all_results[name].append({'Symbol': symbol, 'Gesamtrendite_%': round(total_return_pct, 2), 'Gewinnrate_%': round(win_rate, 2), 'Anzahl_Trades': len(trades)})
                     print(f"Ergebnis: {total_return_pct:.2f}% Rendite")
+
                 except Exception as e:
                     print(f"Ein FEHLER ist aufgetreten: {e}")
 
