@@ -54,10 +54,6 @@
                 <td>{{ "%.2f"|format(result['Gewinnrate_%']) }}%</td>
                 <td>{{ result.Anzahl_Trades }}</td>
               </tr>
-              {% else %}
-              <tr>
-                <td colspan="4">Keine Tages-Strategie-Daten gefunden.</td>
-              </tr>
               {% endfor %}
             </tbody>
           </table>
@@ -86,10 +82,6 @@
                 </td>
                 <td>{{ "%.2f"|format(result['Gewinnrate_%']) }}%</td>
                 <td>{{ result.Anzahl_Trades }}</td>
-              </tr>
-              {% else %}
-              <tr>
-                <td colspan="4">Keine Swing-Strategie-Daten gefunden.</td>
               </tr>
               {% endfor %}
             </tbody>
@@ -120,10 +112,6 @@
                 <td>{{ "%.2f"|format(result['Gewinnrate_%']) }}%</td>
                 <td>{{ result.Anzahl_Trades }}</td>
               </tr>
-              {% else %}
-              <tr>
-                <td colspan="4">Keine Genius-Strategie-Daten gefunden.</td>
-              </tr>
               {% endfor %}
             </tbody>
           </table>
@@ -133,52 +121,35 @@
 
     <script>
       document.addEventListener("DOMContentLoaded", function () {
-        // Funktion zum Erstellen eines einzelnen Equity-Charts
-        function createEquityChart(elementId, title, seriesData) {
+        function createEquityChart(elementId, seriesData) {
           const options = {
             series: seriesData,
             chart: {
-              type: "line",
+              type: "area",
               height: 350,
               background: "transparent",
               toolbar: { show: true },
+              zoom: { enabled: true },
             },
-            theme: {
-              mode: "dark",
-            },
+            theme: { mode: "dark" },
             dataLabels: { enabled: false },
             stroke: { curve: "smooth", width: 2 },
-            title: {
-              text: title,
-              align: "left",
-            },
             xaxis: {
               type: "datetime",
-              labels: {
-                style: { colors: "#8e8e8e" },
-              },
+              labels: { style: { colors: "#8e8e8e" } },
             },
             yaxis: {
               labels: {
                 formatter: (value) => {
-                  return value.toFixed(2);
+                  return `$${value.toFixed(0)}`;
                 },
                 style: { colors: "#8e8e8e" },
               },
             },
-            tooltip: {
-              theme: "dark",
-              x: { format: "dd MMM yyyy" },
-            },
-            grid: {
-              borderColor: "#535A6C",
-            },
-            legend: {
-              position: "top",
-              horizontalAlign: "right",
-            },
+            tooltip: { theme: "dark", x: { format: "dd MMM yyyy" } },
+            grid: { borderColor: "#535A6C" },
+            legend: { position: "top", horizontalAlign: "right" },
           };
-
           const chart = new ApexCharts(
             document.querySelector(elementId),
             options
@@ -186,42 +157,27 @@
           chart.render();
         }
 
-        // Lade die Equity-Daten und erstelle alle Charts
         fetch("/api/equity-curves")
-          .then((response) => {
-            if (!response.ok)
-              throw new Error("Equity-Daten konnten nicht geladen werden.");
-            return response.json();
-          })
+          .then((response) => response.json())
           .then((data) => {
-            // Erstelle Chart für jede Strategie
             for (const strategy in data) {
               const elementId = `#equity-chart-${strategy}`;
-              const title = `Equity-Verlauf: ${
-                strategy.charAt(0).toUpperCase() + strategy.slice(1)
-              }`;
-
               const series = [];
               for (const symbol in data[strategy]) {
                 series.push({
                   name: symbol,
-                  data: data[strategy][symbol].dates.map((date, index) => {
-                    return [
-                      new Date(date).getTime(),
-                      data[strategy][symbol].values[index],
-                    ];
-                  }),
+                  data: data[strategy][symbol].dates.map((date, index) => [
+                    new Date(date).getTime(),
+                    data[strategy][symbol].values[index],
+                  ]),
                 });
               }
-
               if (document.querySelector(elementId)) {
-                createEquityChart(elementId, title, series);
+                createEquityChart(elementId, series);
               }
             }
           })
-          .catch((error) =>
-            console.error("Fehler beim Erstellen der Equity-Charts:", error)
-          );
+          .catch((error) => console.error("Fehler:", error));
       });
     </script>
   </body>
