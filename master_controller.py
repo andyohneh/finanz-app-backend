@@ -128,7 +128,7 @@ def backtest_all_models():
                     df_features = config['feature_func'](df_symbol.copy()).dropna()
                     
                     X = df_features[features]
-                    X_scaled = scaler.transform(X)
+                    X_scaled = scaler.transform(X.values)
                     df_features['signal'] = model.predict(X_scaled)
                     
                     # Berechne die Rendite basierend auf dem Signal des Vortages
