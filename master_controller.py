@@ -182,12 +182,22 @@ def predict_all_signals():
                     
                     df_features = config['feature_func'](df_live.copy()).dropna()
                     X_predict = df_features[features].tail(1)
-                    X_scaled = scaler.transform(X_predict)
+                    X_scaled = scaler.transform(X_predict.values)
                     prediction = model.predict(X_scaled)
                     
                     signal = {0: "Verkaufen", 1: "Kaufen", 2: "Halten"}.get(int(prediction[0]))
                     price = df_features.iloc[-1]['close']
-                    update_data = {'symbol': symbol, 'strategy': name, 'signal': signal, 'entry_price': price, 'take_profit': price * 1.05, 'stop_loss': price * 0.98, 'last_updated': datetime.now(timezone.utc)}
+                    
+                    # HIER IST DIE FINALE KORREKTUR DER TP/SL-LOGIK
+                    take_profit, stop_loss = None, None
+                    if signal == "Kaufen":
+                        take_profit = price * 1.05
+                        stop_loss = price * 0.98
+                    elif signal == "Verkaufen":
+                        take_profit = price * 0.95
+                        stop_loss = price * 1.02
+                    
+                    update_data = {'symbol': symbol, 'strategy': name, 'signal': signal, 'entry_price': price, 'take_profit': take_profit, 'stop_loss': stop_loss, 'last_updated': datetime.now(timezone.utc)}
                     
                     stmt = insert(predictions).values(update_data)
                     stmt = stmt.on_conflict_do_update(index_elements=['symbol', 'strategy'], set_=update_data)
