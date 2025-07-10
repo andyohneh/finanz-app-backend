@@ -1,4 +1,4 @@
-# backend/master_controller.py (Die finale, korrigierte Version)
+# backend/master_controller.py (Finale Version mit LightGBM-Upgrade)
 import pandas as pd
 import numpy as np
 import joblib
@@ -6,7 +6,8 @@ import os
 import ta
 import json
 from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestClassifier
+# NEU: Wir importieren das neue, stärkere Modell
+from lightgbm import LGBMClassifier
 from sklearn.preprocessing import StandardScaler
 from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import insert
@@ -20,7 +21,7 @@ from database import engine, predictions
 # ==============================================================================
 SYMBOLS = ["BTC/USD", "XAU/USD"]
 MODELS_DIR = "models"
-INITIAL_CAPITAL = 100 # Dein persönliches Startkapital
+INITIAL_CAPITAL = 100
 
 STRATEGIES = {
     'daily': {
@@ -64,16 +65,14 @@ def create_target(df, period=5):
     return df
 
 def train_all_models():
-    print("=== STARTE MODELL-TRAINING ===")
+    print("=== STARTE MODELL-TRAINING (CHAMPIONS LEAGUE: LGBM) ===")
     os.makedirs(MODELS_DIR, exist_ok=True)
     with engine.connect() as conn:
         for symbol in SYMBOLS:
             print(f"\nLade Daten für {symbol}...")
             query = text("SELECT * FROM historical_data_daily WHERE symbol = :symbol ORDER BY timestamp")
             df_raw = pd.read_sql_query(query, conn, params={'symbol': symbol})
-            if len(df_raw) < 250:
-                print(f"Nicht genügend Daten für {symbol}.")
-                continue
+            if len(df_raw) < 250: continue
 
             for name, config in STRATEGIES.items():
                 print(f"--- Trainiere Modell: {name.upper()} für {symbol} ---")
@@ -87,7 +86,9 @@ def train_all_models():
                     X_train, _, y_train, _ = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
                     scaler = StandardScaler().fit(X_train)
                     X_train_scaled = scaler.transform(X_train)
-                    model = RandomForestClassifier(n_estimators=100, random_state=42, class_weight='balanced').fit(X_train_scaled, y_train)
+                    
+                    # KI-UPGRADE: Wir verwenden jetzt den LGBMClassifier
+                    model = LGBMClassifier(n_estimators=100, random_state=42, class_weight='balanced').fit(X_train_scaled, y_train)
                     
                     base_path = f"{MODELS_DIR}/model_{name}_{symbol.replace('/', '')}"
                     joblib.dump(model, f"{base_path}_model.pkl")
@@ -95,16 +96,16 @@ def train_all_models():
                     with open(f"{base_path}_features.json", 'w') as f:
                         json.dump(features, f)
                         
-                    print(f"✅ Modell, Scaler und Features erfolgreich gespeichert.")
+                    print(f"✅ LGBM-Modell erfolgreich gespeichert.")
                 except Exception as e:
                     print(f"Ein FEHLER ist aufgetreten: {e}")
     print("\n=== MODELL-TRAINING ABGESCHLOSSEN ===")
 
+
 def backtest_all_models():
-    print("=== STARTE BACKTESTING (FINALE PORTFOLIO-SIMULATION) ===")
+    print("=== STARTE BACKTESTING ===")
     all_results = {'daily': [], 'swing': [], 'genius': []}
     equity_curves = {'daily': {}, 'swing': {}, 'genius': {}}
-
     with engine.connect() as conn:
         for symbol in SYMBOLS:
             print(f"\nLade Daten für Backtest von {symbol}...")
@@ -127,43 +128,27 @@ def backtest_all_models():
                     X_scaled = scaler.transform(X)
                     df_features['signal'] = model.predict(X_scaled)
                     
-                    # --- ECHTE PORTFOLIO-SIMULATION ---
                     capital = INITIAL_CAPITAL
-                    equity_values = []
-                    
-                    for i in range(len(df_features)):
-                        # Für den ersten Tag bleibt das Kapital das Startkapital
-                        if i > 0:
-                            daily_return = (df_features['close'].iloc[i] - df_features['close'].iloc[i-1]) / df_features['close'].iloc[i-1]
-                            if df_features['signal'].iloc[i-1] == 1: # Gestern "Long"
-                                capital *= (1 + daily_return)
-                            elif df_features['signal'].iloc[i-1] == 0: # Gestern "Short"
-                                capital *= (1 - daily_return)
+                    equity_values = [INITIAL_CAPITAL]
+                    for i in range(1, len(df_features)):
+                        daily_return = (df_features['close'].iloc[i] - df_features['close'].iloc[i-1]) / df_features['close'].iloc[i-1]
+                        if df_features['signal'].iloc[i-1] == 1: capital *= (1 + daily_return)
+                        elif df_features['signal'].iloc[i-1] == 0: capital *= (1 - daily_return)
                         equity_values.append(capital)
-
                     df_features['equity_curve'] = equity_values
                     
-                    equity_curves[name][symbol] = {
-                        'dates': df_features['timestamp'].dt.strftime('%Y-%m-%d').tolist(),
-                        'values': df_features['equity_curve'].round(2).tolist()
-                    }
-
+                    equity_curves[name][symbol] = {'dates': df_features['timestamp'].dt.strftime('%Y-%m-%d').tolist(),'values': df_features['equity_curve'].round(2).tolist()}
                     total_return_pct = ((capital - INITIAL_CAPITAL) / INITIAL_CAPITAL) * 100
                     trades = df_features[df_features['signal'].diff() != 0]
                     win_rate = 50.0 
-
                     all_results[name].append({'Symbol': symbol, 'Gesamtrendite_%': round(total_return_pct, 2), 'Gewinnrate_%': round(win_rate, 2), 'Anzahl_Trades': len(trades)})
                     print(f"Ergebnis: {total_return_pct:.2f}% Rendite")
-
                 except Exception as e:
                     print(f"Ein FEHLER ist aufgetreten: {e}")
 
-    with open('backtest_results.json', 'w') as f:
-        json.dump(all_results, f, indent=4)
-    with open('equity_curves.json', 'w') as f:
-        json.dump(equity_curves, f, indent=4)
-        
-    print("\n✅ Backtest abgeschlossen und Equity-Kurven gespeichert.")
+    with open('backtest_results.json', 'w') as f: json.dump(all_results, f, indent=4)
+    with open('equity_curves.json', 'w') as f: json.dump(equity_curves, f, indent=4)
+    print("\n✅ Backtest abgeschlossen.")
 
 def predict_all_signals():
     print("=== STARTE SIGNAL-GENERATOR ===")
@@ -185,14 +170,12 @@ def predict_all_signals():
                         features = json.load(f)
                     
                     df_features = config['feature_func'](df_live.copy()).dropna()
-                    
                     X_predict = df_features[features].tail(1)
                     X_scaled = scaler.transform(X_predict)
                     prediction = model.predict(X_scaled)
                     
                     signal = {0: "Verkaufen", 1: "Kaufen", 2: "Halten"}.get(int(prediction[0]))
                     price = df_features.iloc[-1]['close']
-                    
                     update_data = {'symbol': symbol, 'strategy': name, 'signal': signal, 'entry_price': price, 'take_profit': price * 1.05, 'stop_loss': price * 0.98, 'last_updated': datetime.now(timezone.utc)}
                     
                     stmt = insert(predictions).values(update_data)
@@ -203,6 +186,7 @@ def predict_all_signals():
                 except Exception as e:
                     print(f"Ein FEHLER ist aufgetreten: {e}")
     print("\n=== SIGNAL-GENERATOR ABGESCHLOSSEN ===")
+
 
 # ==============================================================================
 # 4. STEUERUNG
@@ -215,6 +199,9 @@ if __name__ == "__main__":
     if args.mode == 'train':
         train_all_models()
     elif args.mode == 'backtest':
+        # Für den Backtest müssen wir zuerst die neuesten Modelle trainieren.
+        train_all_models()
         backtest_all_models()
     elif args.mode == 'predict':
+        # Für die Vorhersage müssen die Modelle bereits trainiert sein.
         predict_all_signals()
