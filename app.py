@@ -91,6 +91,23 @@ def reset_database_route(secret_key):
     except Exception as e:
         print(f"FEHLER beim Zurücksetzen der Datenbank: {e}")
         return f"Ein Fehler ist aufgetreten: {e}", 500
+    
+    # In backend/app.py hinzufügen
+
+@app.route('/api/equity-curves')
+def get_equity_curves():
+    """Liest die Equity-Kurven-Daten aus der JSON-Datei."""
+    try:
+        # Wir gehen davon aus, dass die Datei im Hauptverzeichnis des Projekts liegt
+        with open('equity_curves.json', 'r', encoding='utf-8') as f:
+            equity_data = json.load(f)
+        return jsonify(equity_data)
+    except FileNotFoundError:
+        print("Warnung: equity_curves.json nicht gefunden.")
+        return jsonify({"error": "Equity-Daten nicht gefunden. Bitte zuerst den Backtest ausführen."}), 404
+    except Exception as e:
+        print(f"Fehler beim Laden der Equity-Kurven: {e}")
+        return jsonify({"error": "Konnte Equity-Daten nicht laden."}), 500
 
 # --- Main-Block ---
 if __name__ == "__main__":

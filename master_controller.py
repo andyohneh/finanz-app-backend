@@ -11,6 +11,7 @@ from sklearn.preprocessing import StandardScaler
 from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import insert
 from datetime import datetime, timezone
+from xgboost import XGBClassifier
 import argparse
 
 from database import engine, predictions
@@ -85,7 +86,8 @@ def train_all_models():
                     X_train, _, y_train, _ = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
                     scaler = StandardScaler().fit(X_train)
                     X_train_scaled = scaler.transform(X_train)
-                    model = RandomForestClassifier(n_estimators=100, random_state=42, class_weight='balanced').fit(X_train_scaled, y_train)
+                    # XGBoost ist oft leistungsfähiger für komplexe Muster
+                    model = XGBClassifier(n_estimators=100, use_label_encoder=False, eval_metric='mlogloss', random_state=42).fit(X_train_scaled, y_train)
                     model_path = f"models/model_{name}_{symbol.replace('/', '')}.pkl"
                     joblib.dump({'model': model, 'scaler': scaler, 'features': features}, model_path)
                     print(f"✅ Modell erfolgreich gespeichert: {model_path}")
@@ -94,36 +96,30 @@ def train_all_models():
     print("\n=== MODELL-TRAINING ABGESCHLOSSEN ===")
 
 
+# In backend/master_controller.py
 def backtest_all_models():
-    print("=== STARTE BACKTESTING ===")
+    print("=== STARTE BACKTESTING (CHAMPIONS LEAGUE EDITION) ===")
     all_results = {'daily': [], 'swing': [], 'genius': []}
+    equity_curves = {'daily': {}, 'swing': {}, 'genius': {}} # NEU: Für die Equity-Kurven
+
     with engine.connect() as conn:
         for symbol in SYMBOLS:
             print(f"\nLade Daten für Backtest von {symbol}...")
             query = text("SELECT * FROM historical_data_daily WHERE symbol = :symbol ORDER BY timestamp")
             df_symbol = pd.read_sql_query(query, conn, params={'symbol': symbol})
-            if df_symbol.empty:
-                print(f"Keine Daten für {symbol}.")
-                continue
+            if df_symbol.empty: continue
 
             for name, config in STRATEGIES.items():
                 print(f"-- Starte Backtest für {name.upper()}...")
                 try:
+                    # ... (Die Logik zum Laden des Modells und zur Signalgenerierung bleibt gleich)
                     model_path = f"models/model_{name}_{symbol.replace('/', '')}.pkl"
-                    if not os.path.exists(model_path):
-                        print(f"Modell {model_path} nicht gefunden.")
-                        continue
+                    if not os.path.exists(model_path): continue
                     
-                    # HIER IST DIE FINALE KORREKTUR:
-                    # Wir laden die Kiste und packen sie korrekt aus.
                     model_data = joblib.load(model_path)
-                    model = model_data['model']
-                    scaler = model_data['scaler']
-                    features = model_data['features']
+                    model, scaler, features = model_data['model'], model_data['scaler'], model_data['features']
                     
-                    df_features = config['feature_func'](df_symbol.copy())
-                    df_features.dropna(inplace=True)
-                    
+                    df_features = config['feature_func'](df_symbol.copy()).dropna()
                     X = df_features[features]
                     X_scaled = scaler.transform(X)
                     df_features['signal'] = model.predict(X_scaled)
@@ -131,18 +127,32 @@ def backtest_all_models():
                     df_features['daily_return'] = df_features['close'].pct_change()
                     df_features['strategy_return'] = np.where(df_features['signal'] == 1, df_features['daily_return'].shift(-1), np.where(df_features['signal'] == 0, -df_features['daily_return'].shift(-1), 0))
                     
+                    # NEU: Equity-Kurve berechnen
+                    df_features['equity_curve'] = (1 + df_features['strategy_return'].fillna(0)).cumprod()
+                    
+                    # Speichere die Kurvendaten
+                    equity_curves[name][symbol] = {
+                        'dates': df_features['timestamp'].dt.strftime('%Y-%m-%d').tolist(),
+                        'values': df_features['equity_curve'].round(4).tolist()
+                    }
+
+                    # ... (Die Berechnung der Metriken bleibt gleich)
                     trades = df_features[df_features['signal'] != 2]
                     total_return_pct = (df_features['strategy_return'].sum() * 100)
                     win_rate = (len(trades[trades['strategy_return'] > 0]) / len(trades) * 100) if not trades.empty else 0
-                    
                     all_results[name].append({'Symbol': symbol, 'Gesamtrendite_%': round(total_return_pct, 2), 'Gewinnrate_%': round(win_rate, 2), 'Anzahl_Trades': len(trades)})
                     print(f"Ergebnis: {total_return_pct:.2f}% Rendite, {win_rate:.2f}% Gewinnrate")
+
                 except Exception as e:
                     print(f"Ein FEHLER ist aufgetreten: {e}")
 
     with open('backtest_results.json', 'w') as f:
         json.dump(all_results, f, indent=4)
-    print("\n✅ Backtest abgeschlossen und Ergebnisse gespeichert.")
+    # NEU: Speichere die Equity-Kurven in einer separaten Datei
+    with open('equity_curves.json', 'w') as f:
+        json.dump(equity_curves, f, indent=4)
+        
+    print("\n✅ Backtest abgeschlossen und Equity-Kurven gespeichert.")
 
 
 def predict_all_signals():

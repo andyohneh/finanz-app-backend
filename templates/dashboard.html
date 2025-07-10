@@ -12,13 +12,14 @@
       rel="stylesheet"
       href="{{ url_for('static', filename='css/style.css') }}"
     />
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
   </head>
   <body>
     <div class="container">
       <header class="header">
         <div class="logo">
           <img
-            src="{{ url_for('static', filename='images/logo.png') }}"
+            src="{{ url_for('static', filename='logo.png') }}"
             alt="Diamond Sky Logo"
           />
           <h1>Analyse-Dashboard</h1>
@@ -31,6 +32,7 @@
       <main>
         <div class="table-container">
           <h2>Tages-Strategie</h2>
+          <div id="equity-chart-daily" class="equity-chart"></div>
           <table class="results-table">
             <thead>
               <tr>
@@ -63,6 +65,7 @@
 
         <div class="table-container">
           <h2>Swing-Strategie</h2>
+          <div id="equity-chart-swing" class="equity-chart"></div>
           <table class="results-table">
             <thead>
               <tr>
@@ -95,6 +98,7 @@
 
         <div class="table-container">
           <h2>Genius-Strategie</h2>
+          <div id="equity-chart-genius" class="equity-chart"></div>
           <table class="results-table">
             <thead>
               <tr>
@@ -126,5 +130,99 @@
         </div>
       </main>
     </div>
+
+    <script>
+      document.addEventListener("DOMContentLoaded", function () {
+        // Funktion zum Erstellen eines einzelnen Equity-Charts
+        function createEquityChart(elementId, title, seriesData) {
+          const options = {
+            series: seriesData,
+            chart: {
+              type: "line",
+              height: 350,
+              background: "transparent",
+              toolbar: { show: true },
+            },
+            theme: {
+              mode: "dark",
+            },
+            dataLabels: { enabled: false },
+            stroke: { curve: "smooth", width: 2 },
+            title: {
+              text: title,
+              align: "left",
+            },
+            xaxis: {
+              type: "datetime",
+              labels: {
+                style: { colors: "#8e8e8e" },
+              },
+            },
+            yaxis: {
+              labels: {
+                formatter: (value) => {
+                  return value.toFixed(2);
+                },
+                style: { colors: "#8e8e8e" },
+              },
+            },
+            tooltip: {
+              theme: "dark",
+              x: { format: "dd MMM yyyy" },
+            },
+            grid: {
+              borderColor: "#535A6C",
+            },
+            legend: {
+              position: "top",
+              horizontalAlign: "right",
+            },
+          };
+
+          const chart = new ApexCharts(
+            document.querySelector(elementId),
+            options
+          );
+          chart.render();
+        }
+
+        // Lade die Equity-Daten und erstelle alle Charts
+        fetch("/api/equity-curves")
+          .then((response) => {
+            if (!response.ok)
+              throw new Error("Equity-Daten konnten nicht geladen werden.");
+            return response.json();
+          })
+          .then((data) => {
+            // Erstelle Chart für jede Strategie
+            for (const strategy in data) {
+              const elementId = `#equity-chart-${strategy}`;
+              const title = `Equity-Verlauf: ${
+                strategy.charAt(0).toUpperCase() + strategy.slice(1)
+              }`;
+
+              const series = [];
+              for (const symbol in data[strategy]) {
+                series.push({
+                  name: symbol,
+                  data: data[strategy][symbol].dates.map((date, index) => {
+                    return [
+                      new Date(date).getTime(),
+                      data[strategy][symbol].values[index],
+                    ];
+                  }),
+                });
+              }
+
+              if (document.querySelector(elementId)) {
+                createEquityChart(elementId, title, series);
+              }
+            }
+          })
+          .catch((error) =>
+            console.error("Fehler beim Erstellen der Equity-Charts:", error)
+          );
+      });
+    </script>
   </body>
 </html>
