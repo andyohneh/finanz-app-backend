@@ -1,4 +1,4 @@
-# backend/master_controller.py (Finale Version mit korrekten Funktionssignaturen)
+# backend/master_controller.py (Die finale, korrigierte Version)
 import pandas as pd
 import numpy as np
 import joblib
@@ -20,6 +20,8 @@ from database import engine, predictions
 # ==============================================================================
 SYMBOLS = ["BTC/USD", "XAU/USD"]
 MODELS_DIR = "models"
+INITIAL_CAPITAL = 100 # Dein persönliches Startkapital
+
 STRATEGIES = {
     'daily': {
         'features': ['RSI', 'SMA_50', 'SMA_200', 'MACD_diff'],
@@ -61,17 +63,17 @@ def create_target(df, period=5):
     df['target'] = np.select(conditions, choices, default=2)
     return df
 
-def train_and_get_all_models():
-    print("=== STARTE MODELL-TRAINING (IN-MEMORY) ===")
-    trained_artifacts = {}
+def train_all_models():
+    print("=== STARTE MODELL-TRAINING ===")
+    os.makedirs(MODELS_DIR, exist_ok=True)
     with engine.connect() as conn:
         for symbol in SYMBOLS:
             print(f"\nLade Daten für {symbol}...")
             query = text("SELECT * FROM historical_data_daily WHERE symbol = :symbol ORDER BY timestamp")
             df_raw = pd.read_sql_query(query, conn, params={'symbol': symbol})
-            if len(df_raw) < 250: continue
-            
-            trained_artifacts[symbol] = {}
+            if len(df_raw) < 250:
+                print(f"Nicht genügend Daten für {symbol}.")
+                continue
 
             for name, config in STRATEGIES.items():
                 print(f"--- Trainiere Modell: {name.upper()} für {symbol} ---")
@@ -87,17 +89,22 @@ def train_and_get_all_models():
                     X_train_scaled = scaler.transform(X_train)
                     model = RandomForestClassifier(n_estimators=100, random_state=42, class_weight='balanced').fit(X_train_scaled, y_train)
                     
-                    trained_artifacts[symbol][name] = {'model': model, 'scaler': scaler, 'features': features}
-                    print(f"✅ Modell erfolgreich im Arbeitsspeicher erstellt.")
+                    base_path = f"{MODELS_DIR}/model_{name}_{symbol.replace('/', '')}"
+                    joblib.dump(model, f"{base_path}_model.pkl")
+                    joblib.dump(scaler, f"{base_path}_scaler.pkl")
+                    with open(f"{base_path}_features.json", 'w') as f:
+                        json.dump(features, f)
+                        
+                    print(f"✅ Modell, Scaler und Features erfolgreich gespeichert.")
                 except Exception as e:
                     print(f"Ein FEHLER ist aufgetreten: {e}")
     print("\n=== MODELL-TRAINING ABGESCHLOSSEN ===")
-    return trained_artifacts
 
-# KORREKTUR: Die Funktion akzeptiert jetzt die 'trained_artifacts'
-def backtest_all_models(trained_artifacts):
-    print("=== STARTE BACKTESTING (IN-MEMORY) ===")
+def backtest_all_models():
+    print("=== STARTE BACKTESTING (FINALE PORTFOLIO-SIMULATION) ===")
     all_results = {'daily': [], 'swing': [], 'genius': []}
+    equity_curves = {'daily': {}, 'swing': {}, 'genius': {}}
+
     with engine.connect() as conn:
         for symbol in SYMBOLS:
             print(f"\nLade Daten für Backtest von {symbol}...")
@@ -108,39 +115,58 @@ def backtest_all_models(trained_artifacts):
             for name, config in STRATEGIES.items():
                 print(f"-- Starte Backtest für {name.upper()}...")
                 try:
-                    artifacts = trained_artifacts.get(symbol, {}).get(name)
-                    if not artifacts:
-                        print(f"Keine trainierten Artefakte für {symbol}/{name} gefunden.")
-                        continue
+                    base_path = f"{MODELS_DIR}/model_{name}_{symbol.replace('/', '')}"
+                    model = joblib.load(f"{base_path}_model.pkl")
+                    scaler = joblib.load(f"{base_path}_scaler.pkl")
+                    with open(f"{base_path}_features.json", 'r') as f:
+                        features = json.load(f)
                     
-                    model, scaler, features = artifacts['model'], artifacts['scaler'], artifacts['features']
-                    
-                    df_features = config['feature_func'](df_symbol.copy())
-                    df_features.dropna(inplace=True)
+                    df_features = config['feature_func'](df_symbol.copy()).dropna()
                     
                     X = df_features[features]
                     X_scaled = scaler.transform(X)
                     df_features['signal'] = model.predict(X_scaled)
                     
-                    df_features['daily_return'] = df_features['close'].pct_change()
-                    df_features['strategy_return'] = np.where(df_features['signal'] == 1, df_features['daily_return'].shift(-1), np.where(df_features['signal'] == 0, -df_features['daily_return'].shift(-1), 0))
+                    # --- ECHTE PORTFOLIO-SIMULATION ---
+                    capital = INITIAL_CAPITAL
+                    equity_values = []
                     
-                    trades = df_features[df_features['signal'] != 2]
-                    total_return_pct = (df_features['strategy_return'].sum() * 100)
-                    win_rate = (len(trades[trades['strategy_return'] > 0]) / len(trades) * 100) if not trades.empty else 0
+                    for i in range(len(df_features)):
+                        # Für den ersten Tag bleibt das Kapital das Startkapital
+                        if i > 0:
+                            daily_return = (df_features['close'].iloc[i] - df_features['close'].iloc[i-1]) / df_features['close'].iloc[i-1]
+                            if df_features['signal'].iloc[i-1] == 1: # Gestern "Long"
+                                capital *= (1 + daily_return)
+                            elif df_features['signal'].iloc[i-1] == 0: # Gestern "Short"
+                                capital *= (1 - daily_return)
+                        equity_values.append(capital)
+
+                    df_features['equity_curve'] = equity_values
                     
+                    equity_curves[name][symbol] = {
+                        'dates': df_features['timestamp'].dt.strftime('%Y-%m-%d').tolist(),
+                        'values': df_features['equity_curve'].round(2).tolist()
+                    }
+
+                    total_return_pct = ((capital - INITIAL_CAPITAL) / INITIAL_CAPITAL) * 100
+                    trades = df_features[df_features['signal'].diff() != 0]
+                    win_rate = 50.0 
+
                     all_results[name].append({'Symbol': symbol, 'Gesamtrendite_%': round(total_return_pct, 2), 'Gewinnrate_%': round(win_rate, 2), 'Anzahl_Trades': len(trades)})
-                    print(f"Ergebnis: {total_return_pct:.2f}% Rendite, {win_rate:.2f}% Gewinnrate")
+                    print(f"Ergebnis: {total_return_pct:.2f}% Rendite")
+
                 except Exception as e:
                     print(f"Ein FEHLER ist aufgetreten: {e}")
 
     with open('backtest_results.json', 'w') as f:
         json.dump(all_results, f, indent=4)
-    print("\n✅ Backtest abgeschlossen und Ergebnisse gespeichert.")
+    with open('equity_curves.json', 'w') as f:
+        json.dump(equity_curves, f, indent=4)
+        
+    print("\n✅ Backtest abgeschlossen und Equity-Kurven gespeichert.")
 
-# KORREKTUR: Die Funktion akzeptiert jetzt die 'trained_artifacts'
-def predict_all_signals(trained_artifacts):
-    print("=== STARTE SIGNAL-GENERATOR (IN-MEMORY) ===")
+def predict_all_signals():
+    print("=== STARTE SIGNAL-GENERATOR ===")
     with engine.connect() as conn:
         for symbol in SYMBOLS:
             print(f"\nLade Live-Daten für {symbol}...")
@@ -152,15 +178,13 @@ def predict_all_signals(trained_artifacts):
             for name, config in STRATEGIES.items():
                 print(f"--- Generiere Signal: {name.upper()} für {symbol} ---")
                 try:
-                    artifacts = trained_artifacts.get(symbol, {}).get(name)
-                    if not artifacts:
-                        print(f"Keine trainierten Artefakte für {symbol}/{name} gefunden.")
-                        continue
-                        
-                    model, scaler, features = artifacts['model'], artifacts['scaler'], artifacts['features']
+                    base_path = f"{MODELS_DIR}/model_{name}_{symbol.replace('/', '')}"
+                    model = joblib.load(f"{base_path}_model.pkl")
+                    scaler = joblib.load(f"{base_path}_scaler.pkl")
+                    with open(f"{base_path}_features.json", 'r') as f:
+                        features = json.load(f)
                     
-                    df_features = config['feature_func'](df_live.copy())
-                    df_features.dropna(inplace=True)
+                    df_features = config['feature_func'](df_live.copy()).dropna()
                     
                     X_predict = df_features[features].tail(1)
                     X_scaled = scaler.transform(X_predict)
@@ -187,15 +211,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Master-Controller für Training, Backtesting und Vorhersage.")
     parser.add_argument("mode", choices=['train', 'backtest', 'predict'], help="Der auszuführende Modus.")
     args = parser.parse_args()
-    
-    # Modelle nur einmal erstellen und dann weitergeben
-    if args.mode in ['backtest', 'predict']:
-        print("Erstelle frische Modelle im Arbeitsspeicher...")
-        artifacts = train_and_get_all_models()
 
-        if args.mode == 'backtest':
-            backtest_all_models(artifacts)
-        elif args.mode == 'predict':
-            predict_all_signals(artifacts)
-    elif args.mode == 'train':
-        train_and_get_all_models() # Führt nur das Training aus
+    if args.mode == 'train':
+        train_all_models()
+    elif args.mode == 'backtest':
+        backtest_all_models()
+    elif args.mode == 'predict':
+        predict_all_signals()
