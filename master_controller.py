@@ -1,4 +1,4 @@
-# backend/master_controller.py (Finale, reparierte Version)
+# backend/master_controller.py (Finale, unzerstörbare Version)
 import pandas as pd
 import numpy as np
 import joblib
@@ -11,15 +11,15 @@ from sklearn.preprocessing import StandardScaler
 from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import insert
 from datetime import datetime, timezone
-from xgboost import XGBClassifier
 import argparse
 
 from database import engine, predictions
 
 # ==============================================================================
-# 1. ZENTRALE KONFIGURATION (ALLES AN EINEM ORT)
+# 1. ZENTRALE KONFIGURATION
 # ==============================================================================
 SYMBOLS = ["BTC/USD", "XAU/USD"]
+MODELS_DIR = "models"
 
 STRATEGIES = {
     'daily': {
@@ -52,7 +52,7 @@ STRATEGIES = {
 }
 
 # ==============================================================================
-# 2. FUNKTIONEN (TRAIN, BACKTEST, PREDICT)
+# 2. FUNKTIONEN
 # ==============================================================================
 
 def create_target(df, period=5):
@@ -63,16 +63,14 @@ def create_target(df, period=5):
     return df
 
 def train_all_models():
-    print("=== STARTE MODELL-TRAINING ===")
-    os.makedirs('models', exist_ok=True)
+    print("=== STARTE MODELL-TRAINING (ROBUSTER MODUS) ===")
+    os.makedirs(MODELS_DIR, exist_ok=True)
     with engine.connect() as conn:
         for symbol in SYMBOLS:
             print(f"\nLade Daten für {symbol}...")
             query = text("SELECT * FROM historical_data_daily WHERE symbol = :symbol ORDER BY timestamp")
             df_raw = pd.read_sql_query(query, conn, params={'symbol': symbol})
-            if len(df_raw) < 250:
-                print(f"Nicht genügend Daten für {symbol}.")
-                continue
+            if len(df_raw) < 250: continue
 
             for name, config in STRATEGIES.items():
                 print(f"--- Trainiere Modell: {name.upper()} für {symbol} ---")
@@ -86,22 +84,22 @@ def train_all_models():
                     X_train, _, y_train, _ = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
                     scaler = StandardScaler().fit(X_train)
                     X_train_scaled = scaler.transform(X_train)
-                    # XGBoost ist oft leistungsfähiger für komplexe Muster
-                    model = XGBClassifier(n_estimators=100, use_label_encoder=False, eval_metric='mlogloss', random_state=42).fit(X_train_scaled, y_train)
-                    model_path = f"models/model_{name}_{symbol.replace('/', '')}.pkl"
-                    joblib.dump({'model': model, 'scaler': scaler, 'features': features}, model_path)
-                    print(f"✅ Modell erfolgreich gespeichert: {model_path}")
+                    model = RandomForestClassifier(n_estimators=100, random_state=42, class_weight='balanced').fit(X_train_scaled, y_train)
+                    
+                    base_path = f"{MODELS_DIR}/model_{name}_{symbol.replace('/', '')}"
+                    joblib.dump(model, f"{base_path}_model.pkl")
+                    joblib.dump(scaler, f"{base_path}_scaler.pkl")
+                    with open(f"{base_path}_features.json", 'w') as f:
+                        json.dump(features, f)
+                        
+                    print(f"✅ Modell, Scaler und Features erfolgreich gespeichert.")
                 except Exception as e:
                     print(f"Ein FEHLER ist aufgetreten: {e}")
     print("\n=== MODELL-TRAINING ABGESCHLOSSEN ===")
 
-
-# In backend/master_controller.py
 def backtest_all_models():
-    print("=== STARTE BACKTESTING (CHAMPIONS LEAGUE EDITION) ===")
+    print("=== STARTE BACKTESTING (ROBUSTER MODUS) ===")
     all_results = {'daily': [], 'swing': [], 'genius': []}
-    equity_curves = {'daily': {}, 'swing': {}, 'genius': {}} # NEU: Für die Equity-Kurven
-
     with engine.connect() as conn:
         for symbol in SYMBOLS:
             print(f"\nLade Daten für Backtest von {symbol}...")
@@ -112,14 +110,15 @@ def backtest_all_models():
             for name, config in STRATEGIES.items():
                 print(f"-- Starte Backtest für {name.upper()}...")
                 try:
-                    # ... (Die Logik zum Laden des Modells und zur Signalgenerierung bleibt gleich)
-                    model_path = f"models/model_{name}_{symbol.replace('/', '')}.pkl"
-                    if not os.path.exists(model_path): continue
+                    base_path = f"{MODELS_DIR}/model_{name}_{symbol.replace('/', '')}"
+                    model = joblib.load(f"{base_path}_model.pkl")
+                    scaler = joblib.load(f"{base_path}_scaler.pkl")
+                    with open(f"{base_path}_features.json", 'r') as f:
+                        features = json.load(f)
                     
-                    model_data = joblib.load(model_path)
-                    model, scaler, features = model_data['model'], model_data['scaler'], model_data['features']
+                    df_features = config['feature_func'](df_symbol.copy())
+                    df_features.dropna(inplace=True)
                     
-                    df_features = config['feature_func'](df_symbol.copy()).dropna()
                     X = df_features[features]
                     X_scaled = scaler.transform(X)
                     df_features['signal'] = model.predict(X_scaled)
@@ -127,52 +126,37 @@ def backtest_all_models():
                     df_features['daily_return'] = df_features['close'].pct_change()
                     df_features['strategy_return'] = np.where(df_features['signal'] == 1, df_features['daily_return'].shift(-1), np.where(df_features['signal'] == 0, -df_features['daily_return'].shift(-1), 0))
                     
-                    # NEU: Equity-Kurve berechnen
-                    df_features['equity_curve'] = (1 + df_features['strategy_return'].fillna(0)).cumprod()
-                    
-                    # Speichere die Kurvendaten
-                    equity_curves[name][symbol] = {
-                        'dates': df_features['timestamp'].dt.strftime('%Y-%m-%d').tolist(),
-                        'values': df_features['equity_curve'].round(4).tolist()
-                    }
-
-                    # ... (Die Berechnung der Metriken bleibt gleich)
                     trades = df_features[df_features['signal'] != 2]
                     total_return_pct = (df_features['strategy_return'].sum() * 100)
                     win_rate = (len(trades[trades['strategy_return'] > 0]) / len(trades) * 100) if not trades.empty else 0
+                    
                     all_results[name].append({'Symbol': symbol, 'Gesamtrendite_%': round(total_return_pct, 2), 'Gewinnrate_%': round(win_rate, 2), 'Anzahl_Trades': len(trades)})
                     print(f"Ergebnis: {total_return_pct:.2f}% Rendite, {win_rate:.2f}% Gewinnrate")
-
                 except Exception as e:
                     print(f"Ein FEHLER ist aufgetreten: {e}")
 
     with open('backtest_results.json', 'w') as f:
         json.dump(all_results, f, indent=4)
-    # NEU: Speichere die Equity-Kurven in einer separaten Datei
-    with open('equity_curves.json', 'w') as f:
-        json.dump(equity_curves, f, indent=4)
-        
-    print("\n✅ Backtest abgeschlossen und Equity-Kurven gespeichert.")
-
+    print("\n✅ Backtest abgeschlossen und Ergebnisse gespeichert.")
 
 def predict_all_signals():
-    print("=== STARTE SIGNAL-GENERATOR ===")
+    print("=== STARTE SIGNAL-GENERATOR (ROBUSTER MODUS) ===")
     with engine.connect() as conn:
         for symbol in SYMBOLS:
             print(f"\nLade Live-Daten für {symbol}...")
             query = text("SELECT * FROM historical_data_daily WHERE symbol = :symbol ORDER BY timestamp DESC LIMIT 400")
             df_live = pd.read_sql_query(query, conn, params={'symbol': symbol})
             df_live = df_live.sort_values(by='timestamp').reset_index(drop=True)
-            if len(df_live) < 250:
-                print(f"Nicht genügend Live-Daten für {symbol}.")
-                continue
+            if len(df_live) < 250: continue
 
             for name, config in STRATEGIES.items():
                 print(f"--- Generiere Signal: {name.upper()} für {symbol} ---")
                 try:
-                    model_path = f"models/model_{name}_{symbol.replace('/', '')}.pkl"
-                    model_data = joblib.load(model_path)
-                    model, scaler, features = model_data['model'], model_data['scaler'], model_data['features']
+                    base_path = f"{MODELS_DIR}/model_{name}_{symbol.replace('/', '')}"
+                    model = joblib.load(f"{base_path}_model.pkl")
+                    scaler = joblib.load(f"{base_path}_scaler.pkl")
+                    with open(f"{base_path}_features.json", 'r') as f:
+                        features = json.load(f)
                     
                     df_features = config['feature_func'](df_live.copy())
                     df_features.dropna(inplace=True)
@@ -194,7 +178,6 @@ def predict_all_signals():
                 except Exception as e:
                     print(f"Ein FEHLER ist aufgetreten: {e}")
     print("\n=== SIGNAL-GENERATOR ABGESCHLOSSEN ===")
-
 
 # ==============================================================================
 # 4. STEUERUNG
