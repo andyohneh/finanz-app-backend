@@ -31,26 +31,35 @@ def dashboard():
 
 @app.route('/api/assets')
 def get_assets():
+    """Holt die fertigen Live-Signale für eine gegebene Strategie."""
     strategy = request.args.get('strategy', 'daily')
     assets_data = []
     try:
         with engine.connect() as conn:
             query = text("SELECT * FROM predictions WHERE strategy = :strategy ORDER BY symbol")
             db_results = conn.execute(query, {"strategy": strategy}).fetchall()
+
             for row in db_results:
                 prediction = row._asdict()
-                color, icon = "grey", "circle"
-                if prediction.get('signal') == "Kaufen":
+                signal_text = prediction.get('signal', 'Halten')
+                
+                # HIER IST DIE KORRIGIERTE LOGIK
+                color = "grey"
+                icon = "circle"
+                
+                if signal_text == "Kaufen":
                     color, icon = "green", "arrow-up"
-                elif prediction.get('signal') == "Verkaufen":
+                elif signal_text == "Verkaufen":
                     color, icon = "red", "arrow-down"
+                
                 assets_data.append({
                     "asset": prediction.get('symbol', 'N/A').replace('/', ''),
                     "entry": f"{prediction.get('entry_price'):.4f}" if prediction.get('entry_price') else "N/A",
                     "takeProfit": f"{prediction.get('take_profit'):.4f}" if prediction.get('take_profit') else "N/A",
                     "stopLoss": f"{prediction.get('stop_loss'):.4f}" if prediction.get('stop_loss') else "N/A",
-                    "signal": prediction.get('signal'),
-                    "color": color, "icon": icon,
+                    "signal": signal_text,
+                    "color": color,
+                    "icon": icon,
                     "timestamp": prediction.get('last_updated').strftime('%Y-%m-%d %H:%M:%S') if prediction.get('last_updated') else "N/A"
                 })
         return jsonify(assets_data)
