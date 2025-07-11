@@ -28,7 +28,7 @@ INITIAL_CAPITAL = 100
 # KI-UPGRADE: Wir fügen mehr und bessere Features hinzu
 STRATEGIES = {
     'daily': {
-        'features': ['RSI', 'SMA_50', 'SMA_200', 'MACD_diff', 'ATR', 'Stoch'],
+        'features': ['RSI', 'ATR', 'MACD_diff', 'Stoch'], # Top 4 aus deiner Analyse
         'feature_func': lambda df: df.assign(
             RSI=ta.momentum.rsi(df['close'], window=14),
             SMA_50=ta.trend.sma_indicator(df['close'], window=50),
@@ -39,7 +39,7 @@ STRATEGIES = {
         )
     },
     'swing': {
-        'features': ['RSI', 'SMA_20', 'EMA_50', 'BB_Width', 'WilliamsR'],
+        'features': ['BB_Width', 'RSI', 'WilliamsR', 'SMA_20'], # Top 4 aus deiner Analyse
         'feature_func': lambda df: df.assign(
             RSI=ta.momentum.rsi(df['close'], window=14),
             SMA_20=ta.trend.sma_indicator(df['close'], window=20),
@@ -49,7 +49,7 @@ STRATEGIES = {
         )
     },
     'genius': {
-        'features': ['ADX', 'ATR', 'Stoch_RSI', 'WilliamsR', 'CCI'],
+        'features': ['ATR', 'ADX', 'CCI', 'WilliamsR'], # Top 4 aus deiner Analyse
         'feature_func': lambda df: df.assign(
             ADX=ta.trend.adx(df['high'], df['low'], df['close'], window=14),
             ATR=ta.volatility.average_true_range(df['high'], df['low'], df['close'], window=14),
