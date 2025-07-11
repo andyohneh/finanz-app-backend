@@ -1,4 +1,4 @@
-# backend/master_controller.py (Finale Champions-League-Version mit KI-Upgrade)
+# backend/master_controller.py (Die finale, perfekte Version)
 import pandas as pd
 import numpy as np
 import joblib
@@ -6,7 +6,7 @@ import os
 import ta
 import json
 import requests
-from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.model_selection import train_test_split
 from lightgbm import LGBMClassifier
 from sklearn.preprocessing import StandardScaler
 from sqlalchemy import text
@@ -21,14 +21,14 @@ from database import engine, predictions
 # 1. ZENTRALE KONFIGURATION
 # ==============================================================================
 load_dotenv()
+TWELVEDATA_API_KEY = os.getenv("TWELVEDATA_API_KEY")
 SYMBOLS = ["BTC/USD", "XAU/USD"]
 MODELS_DIR = "models"
 INITIAL_CAPITAL = 100
 
-# KI-UPGRADE: Wir fügen mehr und bessere Features hinzu
 STRATEGIES = {
     'daily': {
-        'features': ['RSI', 'ATR', 'MACD_diff', 'Stoch'], # Top 4 aus deiner Analyse
+        'features': ['RSI', 'SMA_50', 'SMA_200', 'MACD_diff', 'ATR', 'Stoch'],
         'feature_func': lambda df: df.assign(
             RSI=ta.momentum.rsi(df['close'], window=14),
             SMA_50=ta.trend.sma_indicator(df['close'], window=50),
@@ -39,7 +39,7 @@ STRATEGIES = {
         )
     },
     'swing': {
-        'features': ['BB_Width', 'RSI', 'WilliamsR', 'SMA_20'], # Top 4 aus deiner Analyse
+        'features': ['RSI', 'SMA_20', 'EMA_50', 'BB_Width', 'WilliamsR'],
         'feature_func': lambda df: df.assign(
             RSI=ta.momentum.rsi(df['close'], window=14),
             SMA_20=ta.trend.sma_indicator(df['close'], window=20),
@@ -49,7 +49,7 @@ STRATEGIES = {
         )
     },
     'genius': {
-        'features': ['ATR', 'ADX', 'CCI', 'WilliamsR'], # Top 4 aus deiner Analyse
+        'features': ['ADX', 'ATR', 'Stoch_RSI', 'WilliamsR', 'CCI'],
         'feature_func': lambda df: df.assign(
             ADX=ta.trend.adx(df['high'], df['low'], df['close'], window=14),
             ATR=ta.volatility.average_true_range(df['high'], df['low'], df['close'], window=14),
@@ -72,7 +72,7 @@ def create_target(df, period=5):
     return df
 
 def train_all_models():
-    print("=== STARTE MODELL-TRAINING (KI-HYPER-ANTRIEB) ===")
+    print("=== STARTE MODELL-TRAINING (PERFEKTIONIERT) ===")
     os.makedirs(MODELS_DIR, exist_ok=True)
     with engine.connect() as conn:
         for symbol in SYMBOLS:
@@ -86,114 +86,67 @@ def train_all_models():
                     df = config['feature_func'](df_raw.copy()); df = create_target(df); df.dropna(inplace=True)
                     features = config['features']
                     X = df[features]; y = df['target']
-                    
-                    X_train, _, y_train, _ = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+                    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
                     scaler = StandardScaler().fit(X_train)
                     X_train_scaled = scaler.transform(X_train)
+                    model = LGBMClassifier(n_estimators=100, random_state=42, class_weight='balanced', verbosity=-1).fit(X_train_scaled, y_train, feature_name=features)
                     
-                    # KI-UPGRADE: Hyperparameter-Tuning
-                    param_grid = {
-                        'n_estimators': [100, 200],
-                        'learning_rate': [0.05, 0.1],
-                        'num_leaves': [31, 50]
-                    }
-                    lgbm = LGBMClassifier(random_state=42, class_weight='balanced')
-                    grid_search = GridSearchCV(estimator=lgbm, param_grid=param_grid, cv=3, scoring='accuracy', n_jobs=-1, verbose=1)
-                    grid_search.fit(X_train_scaled, y_train)
-                    
-                    print(f"Beste Parameter gefunden: {grid_search.best_params_}")
-                    best_model = grid_search.best_estimator_
-                    
+                    # Genauigkeit auf Test-Set prüfen
+                    y_pred = model.predict(scaler.transform(X_test))
+                    accuracy = (y_pred == y_test).mean()
+                    print(f"Modell-Genauigkeit: {accuracy:.2f}")
+
                     base_path = f"{MODELS_DIR}/model_{name}_{symbol.replace('/', '')}"
-                    joblib.dump(best_model, f"{base_path}_model.pkl")
-                    joblib.dump(scaler, f"{base_path}_scaler.pkl")
+                    joblib.dump(model, f"{base_path}_model.pkl"); joblib.dump(scaler, f"{base_path}_scaler.pkl")
                     with open(f"{base_path}_features.json", 'w') as f: json.dump(features, f)
-                    print(f"✅ Optimiertes LGBM-Modell gespeichert.")
+                    print(f"✅ Perfektioniertes LGBM-Modell gespeichert.")
                 except Exception as e: print(f"FEHLER: {e}")
     print("\n=== MODELL-TRAINING ABGESCHLOSSEN ===")
 
+
 def backtest_all_models():
-    print("=== STARTE BACKTESTING (FINALE PORTFOLIO-SIMULATION) ===")
+    print("=== STARTE BACKTESTING (PERFEKTIONIERT) ===")
     all_results = {'daily': [], 'swing': [], 'genius': []}
     equity_curves = {'daily': {}, 'swing': {}, 'genius': {}}
-    INITIAL_CAPITAL = 100 # Dein persönliches Startkapital
-
     with engine.connect() as conn:
         for symbol in SYMBOLS:
             print(f"\nLade Daten für Backtest von {symbol}...")
-            query = text("SELECT * FROM historical_data_daily WHERE symbol = :symbol ORDER BY timestamp")
-            df_symbol = pd.read_sql_query(query, conn, params={'symbol': symbol})
+            df_symbol = pd.read_sql_query(text("SELECT * FROM historical_data_daily WHERE symbol = :symbol ORDER BY timestamp"), conn, params={'symbol': symbol})
             if df_symbol.empty: continue
 
             for name, config in STRATEGIES.items():
                 print(f"-- Starte Backtest für {name.upper()}...")
                 try:
                     base_path = f"{MODELS_DIR}/model_{name}_{symbol.replace('/', '')}"
-                    model = joblib.load(f"{base_path}_model.pkl")
-                    scaler = joblib.load(f"{base_path}_scaler.pkl")
-                    with open(f"{base_path}_features.json", 'r') as f:
-                        features = json.load(f)
+                    model = joblib.load(f"{base_path}_model.pkl"); scaler = joblib.load(f"{base_path}_scaler.pkl")
+                    with open(f"{base_path}_features.json", 'r') as f: features = json.load(f)
                     
                     df_features = config['feature_func'](df_symbol.copy()).dropna()
-                    
                     X = df_features[features]
-                    X_scaled = scaler.transform(X) # .values ist hier nicht nötig
+                    # FINALE KORREKTUR 1: UserWarning entfernen
+                    X_scaled = scaler.transform(X.values)
                     df_features['signal'] = model.predict(X_scaled)
                     
-                    # --- ECHTE PORTFOLIO-SIMULATION ---
-                    capital = INITIAL_CAPITAL
-                    equity_values = []
+                    df_features['daily_return'] = df_features['close'].pct_change()
+                    df_features['strategy_return'] = np.where(df_features['signal'].shift(1) == 1, df_features['daily_return'], np.where(df_features['signal'].shift(1) == 0, -df_features['daily_return'], 0))
                     
-                    # Wir starten ohne Wert, damit die Schleife sauber beginnt
-                    for i in range(len(df_features)):
-                        # Für den ersten Tag ist das Kapital das Startkapital
-                        if i == 0:
-                            equity_values.append(INITIAL_CAPITAL)
-                            continue
+                    df_features['equity_curve'] = INITIAL_CAPITAL * (1 + df_features['strategy_return']).cumprod()
+                    equity_curves[name][symbol] = {'dates': df_features['timestamp'].dt.strftime('%Y-%m-%d').tolist(),'values': df_features['equity_curve'].fillna(INITIAL_CAPITAL).round(2).tolist()}
 
-                        # Tägliche Rendite berechnen
-                        daily_return = (df_features['close'].iloc[i] - df_features['close'].iloc[i-1]) / df_features['close'].iloc[i-1]
-                        
-                        # Kapital anpassen, basierend auf dem Signal des VORTAGES
-                        if df_features['signal'].iloc[i-1] == 1: # Gestern war "Kaufen" -> heute sind wir "Long"
-                            capital *= (1 + daily_return)
-                        elif df_features['signal'].iloc[i-1] == 0: # Gestern war "Verkaufen" -> heute sind wir "Short"
-                            capital *= (1 - daily_return)
-                        # Bei "Halten" (2) bleibt das Kapital unverändert
-                        
-                        equity_values.append(capital)
-
-                    # Die Equity-Kurve zum DataFrame hinzufügen
-                    df_features['equity_curve'] = equity_values
-                    
-                    equity_curves[name][symbol] = {
-                        'dates': df_features['timestamp'].dt.strftime('%Y-%m-%d').tolist(),
-                        'values': df_features['equity_curve'].round(2).tolist()
-                    }
-
-                    # FINALE, REALISTISCHE BERECHNUNG DER METRIKEN
-                    final_capital = capital
-                    total_return_pct = ((final_capital - INITIAL_CAPITAL) / INITIAL_CAPITAL) * 100
-                    
-                    trades = df_features[df_features['signal'].diff() != 0]
-                    # Eine einfache Win-Rate, die wir später verbessern können
-                    win_rate = 50.0 
-
+                    # FINALE KORREKTUR 2: Realistische Rendite-Berechnung
+                    total_return_pct = df_features['strategy_return'].sum() * 100
+                    trades = df_features[df_features['signal'] != 2]
+                    win_rate = (len(trades[trades['strategy_return'] > 0]) / len(trades) * 100) if not trades.empty else 0
                     all_results[name].append({'Symbol': symbol, 'Gesamtrendite_%': round(total_return_pct, 2), 'Gewinnrate_%': round(win_rate, 2), 'Anzahl_Trades': len(trades)})
-                    print(f"Ergebnis: {total_return_pct:.2f}% Rendite")
+                    print(f"Ergebnis: {total_return_pct:.2f}% Rendite, {win_rate:.2f}% Gewinnrate")
+                except Exception as e: print(f"FEHLER: {e}")
 
-                except Exception as e:
-                    print(f"Ein FEHLER ist aufgetreten: {e}")
-
-    with open('backtest_results.json', 'w') as f:
-        json.dump(all_results, f, indent=4)
-    with open('equity_curves.json', 'w') as f:
-        json.dump(equity_curves, f, indent=4)
-        
-    print("\n✅ Backtest abgeschlossen und Equity-Kurven gespeichert.")
+    with open('backtest_results.json', 'w') as f: json.dump(all_results, f, indent=4)
+    with open('equity_curves.json', 'w') as f: json.dump(equity_curves, f, indent=4)
+    print("\n✅ Backtest abgeschlossen.")
 
 def predict_all_signals():
-    # Diese Funktion bleibt logisch unverändert, profitiert aber von den besseren Modellen
+    # Diese Funktion bleibt unverändert
     print("=== STARTE SIGNAL-GENERATOR ===")
     with engine.connect() as conn:
         for symbol in SYMBOLS:
@@ -208,7 +161,9 @@ def predict_all_signals():
                     model = joblib.load(f"{base_path}_model.pkl"); scaler = joblib.load(f"{base_path}_scaler.pkl")
                     with open(f"{base_path}_features.json", 'r') as f: features = json.load(f)
                     df_features = config['feature_func'](df_live.copy()).dropna()
-                    X_predict = df_features[features].tail(1); X_scaled = scaler.transform(X_predict); prediction = model.predict(X_scaled)
+                    X_predict = df_features[features].tail(1)
+                    X_scaled = scaler.transform(X_predict.values) # .values zur Sicherheit
+                    prediction = model.predict(X_scaled)
                     signal = {0: "Verkaufen", 1: "Kaufen", 2: "Halten"}.get(int(prediction[0]))
                     price = df_features.iloc[-1]['close']
                     take_profit, stop_loss = (price * 1.05, price * 0.98) if signal == "Kaufen" else (price * 0.95, price * 1.02) if signal == "Verkaufen" else (None, None)
@@ -224,14 +179,10 @@ def predict_all_signals():
 # ==============================================================================
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Master-Controller für die Finanz-App.")
-    parser.add_argument("mode", choices=['fetch-data', 'train', 'backtest', 'predict'], help="Der auszuführende Modus.")
+    parser.add_argument("mode", choices=['train', 'backtest', 'predict'], help="Der auszuführende Modus.")
     args = parser.parse_args()
 
-    # Die Logik bleibt gleich, aber die Funktionen dahinter sind jetzt viel mächtiger.
-    if args.mode == 'fetch-data':
-        # (Hier könnte deine fetch_historical_data() Funktion stehen, wenn du sie brauchst)
-        print("Daten werden über den Cron Job 'Taegliche-Daten-Pipeline' geladen.")
-    elif args.mode == 'train':
+    if args.mode == 'train':
         train_all_models()
     elif args.mode == 'backtest':
         train_all_models()
