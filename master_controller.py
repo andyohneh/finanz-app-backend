@@ -1,4 +1,4 @@
-# backend/master_controller.py (Die finale, perfekte Version)
+# backend/master_controller.py (Finale Version ohne Warnungen)
 import pandas as pd
 import numpy as np
 import joblib
@@ -21,7 +21,6 @@ from database import engine, predictions
 # 1. ZENTRALE KONFIGURATION
 # ==============================================================================
 load_dotenv()
-TWELVEDATA_API_KEY = os.getenv("TWELVEDATA_API_KEY")
 SYMBOLS = ["BTC/USD", "XAU/USD"]
 MODELS_DIR = "models"
 INITIAL_CAPITAL = 100
@@ -87,12 +86,15 @@ def train_all_models():
                     features = config['features']
                     X = df[features]; y = df['target']
                     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+                    
                     scaler = StandardScaler().fit(X_train)
                     X_train_scaled = scaler.transform(X_train)
+                    X_test_scaled = scaler.transform(X_test)
+                    
+                    # Wir behalten die Feature-Namen beim Training bei
                     model = LGBMClassifier(n_estimators=100, random_state=42, class_weight='balanced', verbosity=-1).fit(X_train_scaled, y_train, feature_name=features)
                     
-                    # Genauigkeit auf Test-Set prüfen
-                    y_pred = model.predict(scaler.transform(X_test))
+                    y_pred = model.predict(X_test_scaled)
                     accuracy = (y_pred == y_test).mean()
                     print(f"Modell-Genauigkeit: {accuracy:.2f}")
 
@@ -113,7 +115,6 @@ def backtest_all_models():
             print(f"\nLade Daten für Backtest von {symbol}...")
             df_symbol = pd.read_sql_query(text("SELECT * FROM historical_data_daily WHERE symbol = :symbol ORDER BY timestamp"), conn, params={'symbol': symbol})
             if df_symbol.empty: continue
-
             for name, config in STRATEGIES.items():
                 print(f"-- Starte Backtest für {name.upper()}...")
                 try:
@@ -123,7 +124,7 @@ def backtest_all_models():
                     
                     df_features = config['feature_func'](df_symbol.copy()).dropna()
                     X = df_features[features]
-                    # FINALE KORREKTUR 1: UserWarning entfernen
+                    # KORREKTUR: Wir übergeben die reinen Werte, um die Warnung zu vermeiden
                     X_scaled = scaler.transform(X.values)
                     df_features['signal'] = model.predict(X_scaled)
                     
@@ -132,21 +133,19 @@ def backtest_all_models():
                     
                     df_features['equity_curve'] = INITIAL_CAPITAL * (1 + df_features['strategy_return']).cumprod()
                     equity_curves[name][symbol] = {'dates': df_features['timestamp'].dt.strftime('%Y-%m-%d').tolist(),'values': df_features['equity_curve'].fillna(INITIAL_CAPITAL).round(2).tolist()}
-
-                    # FINALE KORREKTUR 2: Realistische Rendite-Berechnung
+                    
                     total_return_pct = df_features['strategy_return'].sum() * 100
                     trades = df_features[df_features['signal'] != 2]
                     win_rate = (len(trades[trades['strategy_return'] > 0]) / len(trades) * 100) if not trades.empty else 0
                     all_results[name].append({'Symbol': symbol, 'Gesamtrendite_%': round(total_return_pct, 2), 'Gewinnrate_%': round(win_rate, 2), 'Anzahl_Trades': len(trades)})
                     print(f"Ergebnis: {total_return_pct:.2f}% Rendite, {win_rate:.2f}% Gewinnrate")
                 except Exception as e: print(f"FEHLER: {e}")
-
     with open('backtest_results.json', 'w') as f: json.dump(all_results, f, indent=4)
     with open('equity_curves.json', 'w') as f: json.dump(equity_curves, f, indent=4)
     print("\n✅ Backtest abgeschlossen.")
 
 def predict_all_signals():
-    # Diese Funktion bleibt unverändert
+    #... (Diese Funktion bleibt unverändert)
     print("=== STARTE SIGNAL-GENERATOR ===")
     with engine.connect() as conn:
         for symbol in SYMBOLS:
