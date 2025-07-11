@@ -5,6 +5,7 @@ import joblib
 import os
 import ta
 import json
+import requests
 from sklearn.model_selection import train_test_split
 # NEU: Wir importieren das neue, stärkere Modell
 from lightgbm import LGBMClassifier
@@ -13,12 +14,15 @@ from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import insert
 from datetime import datetime, timezone
 import argparse
+from dotenv import load_dotenv
 
 from database import engine, predictions
 
 # ==============================================================================
 # 1. ZENTRALE KONFIGURATION
 # ==============================================================================
+load_dotenv()
+TWELVEDATA_API_KEY = os.getenv("TWELVEDATA_API_KEY")
 SYMBOLS = ["BTC/USD", "XAU/USD"]
 MODELS_DIR = "models"
 INITIAL_CAPITAL = 100
@@ -56,6 +60,36 @@ STRATEGIES = {
 # ==============================================================================
 # 2. FUNKTIONEN
 # ==============================================================================
+
+# NEUE FUNKTION: Die Twelvedata-Pipeline
+def fetch_historical_data():
+    if not TWELVEDATA_API_KEY:
+        print("FEHLER: TWELVEDATA_API_KEY nicht gefunden.")
+        return
+    print("=== STARTE DATEN-IMPORT (TWELVEDATA) ===")
+    with engine.connect() as conn:
+        for api_symbol, db_symbol in SYMBOLS.items():
+            print(f"\n--- Lade Daten für {api_symbol} ---")
+            try:
+                url = f"https://api.twelvedata.com/time_series?symbol={api_symbol}&interval=1day&outputsize=5000&apikey={TWELVEDATA_API_KEY}"
+                response = requests.get(url, timeout=20)
+                response.raise_for_status()
+                data = response.json()
+                if data.get('status') == 'ok' and 'values' in data:
+                    records = [{'timestamp': datetime.strptime(v['datetime'], '%Y-%m-%d'), 'symbol': db_symbol, 'open': float(v['open']), 'high': float(v['high']), 'low': float(v['low']), 'close': float(v['close']), 'volume': int(v.get('volume', 0))} for v in data['values']]
+                    if not records: continue
+                    print(f"Füge {len(records)} Datensätze ein...")
+                    trans = conn.begin()
+                    try:
+                        for record in records:
+                            stmt = text("""INSERT INTO historical_data_daily (timestamp, symbol, open, high, low, close, volume) VALUES (:timestamp, :symbol, :open, :high, :low, :close, :volume) ON CONFLICT (timestamp, symbol) DO NOTHING""")
+                            conn.execute(stmt, record)
+                        trans.commit()
+                        print(f"✅ Daten für {db_symbol} erfolgreich importiert.")
+                    except Exception as e: trans.rollback(); print(f"FEHLER beim Einfügen: {e}")
+                else: print(f"Fehlerhafte API-Antwort: {data.get('message')}")
+            except Exception as e: print(f"Ein FEHLER ist aufgetreten: {e}")
+    print("\n=== DATEN-IMPORT ABGESCHLOSSEN ===")
 
 def create_target(df, period=5):
     df['future_return'] = df['close'].pct_change(period).shift(-period)
@@ -213,16 +247,17 @@ def predict_all_signals():
 # 4. STEUERUNG
 # ==============================================================================
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Master-Controller für Training, Backtesting und Vorhersage.")
-    parser.add_argument("mode", choices=['train', 'backtest', 'predict'], help="Der auszuführende Modus.")
+    parser = argparse.ArgumentParser(description="Master-Controller für die Finanz-App.")
+    # NEUER MODUS 'fetch-data'
+    parser.add_argument("mode", choices=['fetch-data', 'train', 'backtest', 'predict'], help="Der auszuführende Modus.")
     args = parser.parse_args()
 
-    if args.mode == 'train':
+    if args.mode == 'fetch-data':
+        fetch_historical_data()
+    elif args.mode == 'train':
         train_all_models()
     elif args.mode == 'backtest':
-        # Für den Backtest müssen wir zuerst die neuesten Modelle trainieren.
         train_all_models()
         backtest_all_models()
     elif args.mode == 'predict':
-        # Für die Vorhersage müssen die Modelle bereits trainiert sein.
         predict_all_signals()
