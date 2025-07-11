@@ -1,4 +1,4 @@
-# backend/master_controller.py (Finale Version ohne Warnungen)
+# backend/master_controller.py (Finale Champions-League-Version)
 import pandas as pd
 import numpy as np
 import joblib
@@ -6,7 +6,7 @@ import os
 import ta
 import json
 import requests
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, GridSearchCV
 from lightgbm import LGBMClassifier
 from sklearn.preprocessing import StandardScaler
 from sqlalchemy import text
@@ -25,36 +25,37 @@ SYMBOLS = ["BTC/USD", "XAU/USD"]
 MODELS_DIR = "models"
 INITIAL_CAPITAL = 100
 
+# CHAMPIONS-LEAGUE-UPGRADE: Optimierte Feature-Sets basierend auf deiner Analyse!
 STRATEGIES = {
     'daily': {
-        'features': ['RSI', 'SMA_50', 'SMA_200', 'MACD_diff', 'ATR', 'Stoch'],
+        'features': ['RSI', 'ATR', 'MACD_diff', 'Stoch'],
         'feature_func': lambda df: df.assign(
             RSI=ta.momentum.rsi(df['close'], window=14),
-            SMA_50=ta.trend.sma_indicator(df['close'], window=50),
-            SMA_200=ta.trend.sma_indicator(df['close'], window=200),
-            MACD_diff=ta.trend.macd_diff(df['close'], window_slow=26, window_fast=12, window_sign=9),
             ATR=ta.volatility.average_true_range(df['high'], df['low'], df['close'], window=14),
-            Stoch=ta.momentum.stoch(df['high'], df['low'], df['close'], window=14, smooth_window=3)
+            MACD_diff=ta.trend.macd_diff(df['close'], window_slow=26, window_fast=12, window_sign=9),
+            Stoch=ta.momentum.stoch(df['high'], df['low'], df['close'], window=14, smooth_window=3),
+            SMA_50=ta.trend.sma_indicator(df['close'], window=50),
+            SMA_200=ta.trend.sma_indicator(df['close'], window=200)
         )
     },
     'swing': {
-        'features': ['RSI', 'SMA_20', 'EMA_50', 'BB_Width', 'WilliamsR'],
+        'features': ['BB_Width', 'RSI', 'WilliamsR', 'SMA_20'],
         'feature_func': lambda df: df.assign(
             RSI=ta.momentum.rsi(df['close'], window=14),
             SMA_20=ta.trend.sma_indicator(df['close'], window=20),
-            EMA_50=ta.trend.ema_indicator(df['close'], window=50),
             BB_Width=ta.volatility.bollinger_wband(df['close'], window=20, window_dev=2),
-            WilliamsR=ta.momentum.williams_r(df['high'], df['low'], df['close'], lbp=14)
+            WilliamsR=ta.momentum.williams_r(df['high'], df['low'], df['close'], lbp=14),
+            EMA_50=ta.trend.ema_indicator(df['close'], window=50)
         )
     },
     'genius': {
-        'features': ['ADX', 'ATR', 'Stoch_RSI', 'WilliamsR', 'CCI'],
+        'features': ['ATR', 'ADX', 'CCI', 'WilliamsR'],
         'feature_func': lambda df: df.assign(
             ADX=ta.trend.adx(df['high'], df['low'], df['close'], window=14),
             ATR=ta.volatility.average_true_range(df['high'], df['low'], df['close'], window=14),
-            Stoch_RSI=ta.momentum.stochrsi(df['close'], window=14, smooth1=3, smooth2=3),
             WilliamsR=ta.momentum.williams_r(df['high'], df['low'], df['close'], lbp=14),
-            CCI=ta.trend.cci(df['high'], df['low'], df['close'], window=20)
+            CCI=ta.trend.cci(df['high'], df['low'], df['close'], window=20),
+            Stoch_RSI=ta.momentum.stochrsi(df['close'], window=14, smooth1=3, smooth2=3)
         )
     }
 }
@@ -71,7 +72,7 @@ def create_target(df, period=5):
     return df
 
 def train_all_models():
-    print("=== STARTE MODELL-TRAINING (PERFEKTIONIERT) ===")
+    print("=== STARTE MODELL-TRAINING (CHAMPIONS LEAGUE TUNING) ===")
     os.makedirs(MODELS_DIR, exist_ok=True)
     with engine.connect() as conn:
         for symbol in SYMBOLS:
@@ -85,23 +86,34 @@ def train_all_models():
                     df = config['feature_func'](df_raw.copy()); df = create_target(df); df.dropna(inplace=True)
                     features = config['features']
                     X = df[features]; y = df['target']
-                    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
                     
+                    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
                     scaler = StandardScaler().fit(X_train)
                     X_train_scaled = scaler.transform(X_train)
                     X_test_scaled = scaler.transform(X_test)
                     
-                    # Wir behalten die Feature-Namen beim Training bei
-                    model = LGBMClassifier(n_estimators=100, random_state=42, class_weight='balanced', verbosity=-1).fit(X_train_scaled, y_train, feature_name=features)
+                    # CHAMPIONS-LEAGUE-UPGRADE: Intensives Hyperparameter-Tuning
+                    param_grid = {
+                        'n_estimators': [100, 200, 300],
+                        'learning_rate': [0.01, 0.05, 0.1],
+                        'num_leaves': [20, 31, 40],
+                        'max_depth': [-1, 10, 20]
+                    }
+                    lgbm = LGBMClassifier(random_state=42, class_weight='balanced', verbosity=-1)
+                    grid_search = GridSearchCV(estimator=lgbm, param_grid=param_grid, cv=3, scoring='f1_weighted', n_jobs=-1, verbose=1)
+                    grid_search.fit(X_train_scaled, y_train, feature_name=features)
                     
-                    y_pred = model.predict(X_test_scaled)
+                    print(f"Beste gefundene Parameter: {grid_search.best_params_}")
+                    best_model = grid_search.best_estimator_
+                    
+                    y_pred = best_model.predict(X_test_scaled)
                     accuracy = (y_pred == y_test).mean()
-                    print(f"Modell-Genauigkeit: {accuracy:.2f}")
+                    print(f"Finale Modell-Genauigkeit: {accuracy:.2f}")
 
                     base_path = f"{MODELS_DIR}/model_{name}_{symbol.replace('/', '')}"
-                    joblib.dump(model, f"{base_path}_model.pkl"); joblib.dump(scaler, f"{base_path}_scaler.pkl")
+                    joblib.dump(best_model, f"{base_path}_model.pkl"); joblib.dump(scaler, f"{base_path}_scaler.pkl")
                     with open(f"{base_path}_features.json", 'w') as f: json.dump(features, f)
-                    print(f"✅ Perfektioniertes LGBM-Modell gespeichert.")
+                    print(f"✅ Optimiertes LGBM-Modell gespeichert.")
                 except Exception as e: print(f"FEHLER: {e}")
     print("\n=== MODELL-TRAINING ABGESCHLOSSEN ===")
 
@@ -121,19 +133,14 @@ def backtest_all_models():
                     base_path = f"{MODELS_DIR}/model_{name}_{symbol.replace('/', '')}"
                     model = joblib.load(f"{base_path}_model.pkl"); scaler = joblib.load(f"{base_path}_scaler.pkl")
                     with open(f"{base_path}_features.json", 'r') as f: features = json.load(f)
-                    
                     df_features = config['feature_func'](df_symbol.copy()).dropna()
                     X = df_features[features]
-                    # KORREKTUR: Wir übergeben die reinen Werte, um die Warnung zu vermeiden
                     X_scaled = scaler.transform(X.values)
                     df_features['signal'] = model.predict(X_scaled)
-                    
                     df_features['daily_return'] = df_features['close'].pct_change()
                     df_features['strategy_return'] = np.where(df_features['signal'].shift(1) == 1, df_features['daily_return'], np.where(df_features['signal'].shift(1) == 0, -df_features['daily_return'], 0))
-                    
                     df_features['equity_curve'] = INITIAL_CAPITAL * (1 + df_features['strategy_return']).cumprod()
                     equity_curves[name][symbol] = {'dates': df_features['timestamp'].dt.strftime('%Y-%m-%d').tolist(),'values': df_features['equity_curve'].fillna(INITIAL_CAPITAL).round(2).tolist()}
-                    
                     total_return_pct = df_features['strategy_return'].sum() * 100
                     trades = df_features[df_features['signal'] != 2]
                     win_rate = (len(trades[trades['strategy_return'] > 0]) / len(trades) * 100) if not trades.empty else 0
@@ -145,7 +152,6 @@ def backtest_all_models():
     print("\n✅ Backtest abgeschlossen.")
 
 def predict_all_signals():
-    #... (Diese Funktion bleibt unverändert)
     print("=== STARTE SIGNAL-GENERATOR ===")
     with engine.connect() as conn:
         for symbol in SYMBOLS:
@@ -161,7 +167,7 @@ def predict_all_signals():
                     with open(f"{base_path}_features.json", 'r') as f: features = json.load(f)
                     df_features = config['feature_func'](df_live.copy()).dropna()
                     X_predict = df_features[features].tail(1)
-                    X_scaled = scaler.transform(X_predict.values) # .values zur Sicherheit
+                    X_scaled = scaler.transform(X_predict.values)
                     prediction = model.predict(X_scaled)
                     signal = {0: "Verkaufen", 1: "Kaufen", 2: "Halten"}.get(int(prediction[0]))
                     price = df_features.iloc[-1]['close']
