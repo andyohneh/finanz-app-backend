@@ -198,48 +198,42 @@ def backtest_all_models():
 def predict_all_signals():
     print("=== STARTE SIGNAL-GENERATOR ===")
     with engine.connect() as conn:
-        for symbol in SYMBOLS:
+        for symbol in SYMBOLS.values():
             print(f"\nLade Live-Daten für {symbol}...")
-            query = text("SELECT * FROM historical_data_daily WHERE symbol = :symbol ORDER BY timestamp DESC LIMIT 400")
+            # KORREKTUR: Wir laden die Daten inkl. Sentiment, genau wie beim Training!
+            query = text("""
+                SELECT h.timestamp, h.open, h.high, h.low, h.close, h.volume, COALESCE(s.sentiment_score, 0.0) as sentiment_score
+                FROM (
+                    SELECT * FROM historical_data_daily WHERE symbol = :symbol ORDER BY timestamp DESC LIMIT 400
+                ) h
+                LEFT JOIN daily_sentiment s ON h.symbol = s.asset AND DATE(h.timestamp) = s.date
+                ORDER BY h.timestamp ASC
+            """)
             df_live = pd.read_sql_query(query, conn, params={'symbol': symbol})
-            df_live = df_live.sort_values(by='timestamp').reset_index(drop=True)
+            
             if len(df_live) < 250: continue
 
             for name, config in STRATEGIES.items():
                 print(f"--- Generiere Signal: {name.upper()} für {symbol} ---")
                 try:
                     base_path = f"{MODELS_DIR}/model_{name}_{symbol.replace('/', '')}"
-                    model = joblib.load(f"{base_path}_model.pkl")
-                    scaler = joblib.load(f"{base_path}_scaler.pkl")
-                    with open(f"{base_path}_features.json", 'r') as f:
-                        features = json.load(f)
+                    model = joblib.load(f"{base_path}_model.pkl"); scaler = joblib.load(f"{base_path}_scaler.pkl")
+                    with open(f"{base_path}_features.json", 'r') as f: features = json.load(f)
                     
                     df_features = config['feature_func'](df_live.copy()).dropna()
+                    
                     X_predict = df_features[features].tail(1)
                     X_scaled = scaler.transform(X_predict.values)
                     prediction = model.predict(X_scaled)
                     
                     signal = {0: "Verkaufen", 1: "Kaufen", 2: "Halten"}.get(int(prediction[0]))
                     price = df_features.iloc[-1]['close']
-                    
-                    # HIER IST DIE FINALE KORREKTUR DER TP/SL-LOGIK
-                    take_profit, stop_loss = None, None
-                    if signal == "Kaufen":
-                        take_profit = price * 1.05
-                        stop_loss = price * 0.98
-                    elif signal == "Verkaufen":
-                        take_profit = price * 0.95
-                        stop_loss = price * 1.02
+                    take_profit, stop_loss = (price * 1.05, price * 0.98) if signal == "Kaufen" else (price * 0.95, price * 1.02) if signal == "Verkaufen" else (None, None)
                     
                     update_data = {'symbol': symbol, 'strategy': name, 'signal': signal, 'entry_price': price, 'take_profit': take_profit, 'stop_loss': stop_loss, 'last_updated': datetime.now(timezone.utc)}
-                    
-                    stmt = insert(predictions).values(update_data)
-                    stmt = stmt.on_conflict_do_update(index_elements=['symbol', 'strategy'], set_=update_data)
-                    conn.execute(stmt)
-                    conn.commit()
+                    stmt = insert(predictions).values(update_data); stmt = stmt.on_conflict_do_update(index_elements=['symbol', 'strategy'], set_=update_data); conn.execute(stmt); conn.commit()
                     print(f"✅ Signal erfolgreich gespeichert.")
-                except Exception as e:
-                    print(f"Ein FEHLER ist aufgetreten: {e}")
+                except Exception as e: print(f"FEHLER: {e}")
     print("\n=== SIGNAL-GENERATOR ABGESCHLOSSEN ===")
 
 
