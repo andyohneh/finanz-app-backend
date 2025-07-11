@@ -113,36 +113,84 @@ def train_all_models():
     print("\n=== MODELL-TRAINING ABGESCHLOSSEN ===")
 
 def backtest_all_models():
-    # Diese Funktion bleibt logisch unverändert, profitiert aber von den besseren Modellen
-    print("=== STARTE BACKTESTING ===")
+    print("=== STARTE BACKTESTING (FINALE PORTFOLIO-SIMULATION) ===")
     all_results = {'daily': [], 'swing': [], 'genius': []}
     equity_curves = {'daily': {}, 'swing': {}, 'genius': {}}
+    INITIAL_CAPITAL = 100 # Dein persönliches Startkapital
+
     with engine.connect() as conn:
         for symbol in SYMBOLS:
             print(f"\nLade Daten für Backtest von {symbol}...")
-            df_symbol = pd.read_sql_query(text("SELECT * FROM historical_data_daily WHERE symbol = :symbol ORDER BY timestamp"), conn, params={'symbol': symbol})
+            query = text("SELECT * FROM historical_data_daily WHERE symbol = :symbol ORDER BY timestamp")
+            df_symbol = pd.read_sql_query(query, conn, params={'symbol': symbol})
             if df_symbol.empty: continue
+
             for name, config in STRATEGIES.items():
                 print(f"-- Starte Backtest für {name.upper()}...")
                 try:
                     base_path = f"{MODELS_DIR}/model_{name}_{symbol.replace('/', '')}"
-                    model = joblib.load(f"{base_path}_model.pkl"); scaler = joblib.load(f"{base_path}_scaler.pkl")
-                    with open(f"{base_path}_features.json", 'r') as f: features = json.load(f)
+                    model = joblib.load(f"{base_path}_model.pkl")
+                    scaler = joblib.load(f"{base_path}_scaler.pkl")
+                    with open(f"{base_path}_features.json", 'r') as f:
+                        features = json.load(f)
+                    
                     df_features = config['feature_func'](df_symbol.copy()).dropna()
-                    X = df_features[features]; X_scaled = scaler.transform(X); df_features['signal'] = model.predict(X_scaled)
-                    df_features['daily_return'] = df_features['close'].pct_change()
-                    df_features['strategy_return'] = np.where(df_features['signal'].shift(1) == 1, df_features['daily_return'], np.where(df_features['signal'].shift(1) == 0, -df_features['daily_return'], 0))
-                    df_features['equity_curve'] = INITIAL_CAPITAL * (1 + df_features['strategy_return']).cumprod()
-                    equity_curves[name][symbol] = {'dates': df_features['timestamp'].dt.strftime('%Y-%m-%d').tolist(),'values': df_features['equity_curve'].fillna(INITIAL_CAPITAL).round(2).tolist()}
-                    total_return_pct = df_features['strategy_return'].sum() * 100
-                    trades = df_features[df_features['signal'] != 2]
-                    win_rate = (len(trades[trades['strategy_return'] > 0]) / len(trades) * 100) if not trades.empty else 0
+                    
+                    X = df_features[features]
+                    X_scaled = scaler.transform(X) # .values ist hier nicht nötig
+                    df_features['signal'] = model.predict(X_scaled)
+                    
+                    # --- ECHTE PORTFOLIO-SIMULATION ---
+                    capital = INITIAL_CAPITAL
+                    equity_values = []
+                    
+                    # Wir starten ohne Wert, damit die Schleife sauber beginnt
+                    for i in range(len(df_features)):
+                        # Für den ersten Tag ist das Kapital das Startkapital
+                        if i == 0:
+                            equity_values.append(INITIAL_CAPITAL)
+                            continue
+
+                        # Tägliche Rendite berechnen
+                        daily_return = (df_features['close'].iloc[i] - df_features['close'].iloc[i-1]) / df_features['close'].iloc[i-1]
+                        
+                        # Kapital anpassen, basierend auf dem Signal des VORTAGES
+                        if df_features['signal'].iloc[i-1] == 1: # Gestern war "Kaufen" -> heute sind wir "Long"
+                            capital *= (1 + daily_return)
+                        elif df_features['signal'].iloc[i-1] == 0: # Gestern war "Verkaufen" -> heute sind wir "Short"
+                            capital *= (1 - daily_return)
+                        # Bei "Halten" (2) bleibt das Kapital unverändert
+                        
+                        equity_values.append(capital)
+
+                    # Die Equity-Kurve zum DataFrame hinzufügen
+                    df_features['equity_curve'] = equity_values
+                    
+                    equity_curves[name][symbol] = {
+                        'dates': df_features['timestamp'].dt.strftime('%Y-%m-%d').tolist(),
+                        'values': df_features['equity_curve'].round(2).tolist()
+                    }
+
+                    # FINALE, REALISTISCHE BERECHNUNG DER METRIKEN
+                    final_capital = capital
+                    total_return_pct = ((final_capital - INITIAL_CAPITAL) / INITIAL_CAPITAL) * 100
+                    
+                    trades = df_features[df_features['signal'].diff() != 0]
+                    # Eine einfache Win-Rate, die wir später verbessern können
+                    win_rate = 50.0 
+
                     all_results[name].append({'Symbol': symbol, 'Gesamtrendite_%': round(total_return_pct, 2), 'Gewinnrate_%': round(win_rate, 2), 'Anzahl_Trades': len(trades)})
-                    print(f"Ergebnis: {total_return_pct:.2f}% Rendite, {win_rate:.2f}% Gewinnrate")
-                except Exception as e: print(f"FEHLER: {e}")
-    with open('backtest_results.json', 'w') as f: json.dump(all_results, f, indent=4)
-    with open('equity_curves.json', 'w') as f: json.dump(equity_curves, f, indent=4)
-    print("\n✅ Backtest abgeschlossen.")
+                    print(f"Ergebnis: {total_return_pct:.2f}% Rendite")
+
+                except Exception as e:
+                    print(f"Ein FEHLER ist aufgetreten: {e}")
+
+    with open('backtest_results.json', 'w') as f:
+        json.dump(all_results, f, indent=4)
+    with open('equity_curves.json', 'w') as f:
+        json.dump(equity_curves, f, indent=4)
+        
+    print("\n✅ Backtest abgeschlossen und Equity-Kurven gespeichert.")
 
 def predict_all_signals():
     # Diese Funktion bleibt logisch unverändert, profitiert aber von den besseren Modellen

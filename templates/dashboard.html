@@ -87,7 +87,6 @@
             </tbody>
           </table>
         </div>
-
         <div class="table-container">
           <h2>Genius-Strategie</h2>
           <div id="equity-chart-genius" class="equity-chart"></div>
@@ -140,9 +139,7 @@
             },
             yaxis: {
               labels: {
-                formatter: (value) => {
-                  return `$${value.toFixed(0)}`;
-                },
+                formatter: (value) => `€${(value || 0).toFixed(0)}`,
                 style: { colors: "#8e8e8e" },
               },
             },
@@ -158,26 +155,44 @@
         }
 
         fetch("/api/equity-curves")
-          .then((response) => response.json())
+          .then((response) =>
+            response.ok
+              ? response.json()
+              : Promise.reject("Equity-Daten konnten nicht geladen werden.")
+          )
           .then((data) => {
+            if (!data) return;
             for (const strategy in data) {
-              const elementId = `#equity-chart-${strategy}`;
-              const series = [];
-              for (const symbol in data[strategy]) {
-                series.push({
-                  name: symbol,
-                  data: data[strategy][symbol].dates.map((date, index) => [
-                    new Date(date).getTime(),
-                    data[strategy][symbol].values[index],
-                  ]),
-                });
-              }
-              if (document.querySelector(elementId)) {
-                createEquityChart(elementId, series);
+              // SICHERHEITS-CHECK: Nur fortfahren, wenn die Strategie-Daten existieren
+              if (data[strategy] && Object.keys(data[strategy]).length > 0) {
+                const elementId = `#equity-chart-${strategy}`;
+                const series = [];
+                for (const symbol in data[strategy]) {
+                  const symbolData = data[strategy][symbol];
+                  // SICHERHEITS-CHECK: Nur hinzufügen, wenn die Daten Arrays sind
+                  if (
+                    symbolData &&
+                    Array.isArray(symbolData.dates) &&
+                    Array.isArray(symbolData.values)
+                  ) {
+                    series.push({
+                      name: symbol,
+                      data: symbolData.dates.map((date, index) => [
+                        new Date(date).getTime(),
+                        symbolData.values[index],
+                      ]),
+                    });
+                  }
+                }
+                if (document.querySelector(elementId) && series.length > 0) {
+                  createEquityChart(elementId, series);
+                }
               }
             }
           })
-          .catch((error) => console.error("Fehler:", error));
+          .catch((error) =>
+            console.error("Fehler beim Erstellen der Equity-Charts:", error)
+          );
       });
     </script>
   </body>

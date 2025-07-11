@@ -1,14 +1,16 @@
-# backend/analyze_models.py
+# backend/analyze_models.py (Finale Version mit korrekter Namens-Anzeige)
 import joblib
 import os
 import pandas as pd
+import json
 
-# Importiere die Konfiguration, damit wir wissen, welche Modelle wir haben
+# Importiere die Konfigurationen aus dem Master-Controller
 from master_controller import STRATEGIES, SYMBOLS, MODELS_DIR
 
 def analyze_feature_importance():
     """
-    Lädt alle trainierten Modelle und analysiert die Wichtigkeit der Features.
+    Lädt alle trainierten Modelle und analysiert die Wichtigkeit der Features,
+    indem es die Namen aus der zugehörigen JSON-Datei liest.
     """
     print("=== STARTE FEATURE-IMPORTANCE-ANALYSE ===")
     
@@ -17,32 +19,36 @@ def analyze_feature_importance():
     for strategy_name in STRATEGIES.keys():
         print(f"\n--- Strategie: {strategy_name.upper()} ---")
         
-        # Wir sammeln die Feature-Wichtigkeiten über beide Symbole
         strategy_importances = pd.Series(dtype=float)
 
         for symbol in SYMBOLS:
-            model_path = f"{MODELS_DIR}/model_{strategy_name}_{symbol.replace('/', '')}_model.pkl"
+            base_path = f"{MODELS_DIR}/model_{strategy_name}_{symbol.replace('/', '')}"
+            model_path = f"{base_path}_model.pkl"
+            features_path = f"{base_path}_features.json"
             
-            if not os.path.exists(model_path):
-                print(f"Modell für {symbol} nicht gefunden, überspringe.")
+            if not os.path.exists(model_path) or not os.path.exists(features_path):
+                print(f"Modell-Dateien für {symbol} nicht gefunden, überspringe.")
                 continue
 
-            # Lade das trainierte Modell
-            model = joblib.load(model_path)
-            
-            # Hole die Feature-Namen und ihre Wichtigkeits-Werte
-            # Der hasattr-Check ist eine Sicherheitsmaßnahme
-            if hasattr(model, 'feature_importances_'):
-                importances = pd.Series(model.feature_importances_, index=model.feature_name_)
-                strategy_importances = strategy_importances.add(importances, fill_value=0)
+            try:
+                # Lade das Modell UND die Feature-Namen
+                model = joblib.load(model_path)
+                with open(features_path, 'r') as f:
+                    features = json.load(f)
+                
+                if hasattr(model, 'feature_importances_'):
+                    importances = pd.Series(model.feature_importances_, index=features)
+                    strategy_importances = strategy_importances.add(importances, fill_value=0)
+            except Exception as e:
+                print(f"Fehler beim Laden oder Analysieren von {symbol}: {e}")
         
         if not strategy_importances.empty:
-            # Berechne den Durchschnitt und sortiere
+            # Berechne den Durchschnitt und sortiere nach Wichtigkeit
             strategy_importances = strategy_importances / len(SYMBOLS)
             all_importances[strategy_name] = strategy_importances.sort_values(ascending=False)
             
-            print("Durchschnittliche Feature-Wichtigkeit (Top 5):")
-            print(all_importances[strategy_name].head())
+            print("Durchschnittliche Feature-Wichtigkeit:")
+            print(all_importances[strategy_name])
 
     print("\n=== ANALYSE ABGESCHLOSSEN ===")
     return all_importances
