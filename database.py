@@ -36,6 +36,7 @@ predictions = Table('predictions', meta,
     Column('symbol', String(20), nullable=False),
     Column('strategy', String(50), nullable=False),
     Column('signal', String(10), nullable=False),
+    Column('confidence', Float, nullable=True), # NEUE SPALTE FÜR DAS SELBSTVERTRAUEN
     Column('entry_price', Float, nullable=True),
     Column('take_profit', Float, nullable=True),
     Column('stop_loss', Float, nullable=True),
