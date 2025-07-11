@@ -99,40 +99,29 @@ def create_target(df, period=5):
     return df
 
 def train_all_models():
-    print("=== STARTE MODELL-TRAINING (CHAMPIONS LEAGUE: LGBM) ===")
+    print("=== STARTE MODELL-TRAINING (LGBM) ===")
     os.makedirs(MODELS_DIR, exist_ok=True)
     with engine.connect() as conn:
+        # KORREKTUR: Direkte Iteration über die Liste
         for symbol in SYMBOLS:
             print(f"\nLade Daten für {symbol}...")
-            query = text("SELECT * FROM historical_data_daily WHERE symbol = :symbol ORDER BY timestamp")
-            df_raw = pd.read_sql_query(query, conn, params={'symbol': symbol})
+            df_raw = pd.read_sql_query(text("SELECT * FROM historical_data_daily WHERE symbol = :symbol ORDER BY timestamp"), conn, params={'symbol': symbol})
             if len(df_raw) < 250: continue
-
             for name, config in STRATEGIES.items():
                 print(f"--- Trainiere Modell: {name.upper()} für {symbol} ---")
                 try:
-                    df = config['feature_func'](df_raw.copy())
-                    df = create_target(df)
-                    df.dropna(inplace=True)
+                    df = config['feature_func'](df_raw.copy()); df = create_target(df); df.dropna(inplace=True)
                     features = config['features']
-                    X = df[features]
-                    y = df['target']
+                    X = df[features]; y = df['target']
                     X_train, _, y_train, _ = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
                     scaler = StandardScaler().fit(X_train)
                     X_train_scaled = scaler.transform(X_train)
-                    
-                    # KI-UPGRADE: Wir verwenden jetzt den LGBMClassifier
-                    model = LGBMClassifier(n_estimators=100, random_state=42, class_weight='balanced').fit(X_train_scaled, y_train)
-                    
+                    model = LGBMClassifier(n_estimators=100, random_state=42, class_weight='balanced').fit(X_train_scaled, y_train, feature_name=features)
                     base_path = f"{MODELS_DIR}/model_{name}_{symbol.replace('/', '')}"
-                    joblib.dump(model, f"{base_path}_model.pkl")
-                    joblib.dump(scaler, f"{base_path}_scaler.pkl")
-                    with open(f"{base_path}_features.json", 'w') as f:
-                        json.dump(features, f)
-                        
-                    print(f"✅ LGBM-Modell erfolgreich gespeichert.")
-                except Exception as e:
-                    print(f"Ein FEHLER ist aufgetreten: {e}")
+                    joblib.dump(model, f"{base_path}_model.pkl"); joblib.dump(scaler, f"{base_path}_scaler.pkl")
+                    with open(f"{base_path}_features.json", 'w') as f: json.dump(features, f)
+                    print(f"✅ LGBM-Modell gespeichert.")
+                except Exception as e: print(f"FEHLER: {e}")
     print("\n=== MODELL-TRAINING ABGESCHLOSSEN ===")
 
 
