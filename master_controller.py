@@ -1,198 +1,212 @@
-# backend/master_controller.py (Finale Version mit allen Befehlen)
+# backend/master_controller.py (Finale Version mit Sentiment im Backtester)
 import pandas as pd
 import numpy as np
 import joblib
 import os
 import ta
 import json
-import requests
-from sklearn.model_selection import train_test_split
-from lightgbm import LGBMClassifier
-from sklearn.preprocessing import StandardScaler
-from sqlalchemy import text
-from sqlalchemy.dialects.postgresql import insert
-from datetime import datetime, timezone
 import argparse
+from datetime import datetime, timezone
 from dotenv import load_dotenv
 
+# Machine Learning Bibliotheken
+from sklearn.preprocessing import MinMaxScaler
+import tensorflow as tf
+from keras.models import Sequential, load_model
+from keras.layers import Input, LSTM, Dense, Dropout
+
+# Datenbank-Anbindung
+from sqlalchemy import text
+from sqlalchemy.dialects.postgresql import insert
 from database import engine, predictions
 
 # ==============================================================================
 # 1. ZENTRALE KONFIGURATION
 # ==============================================================================
 load_dotenv()
-TWELVEDATA_API_KEY = os.getenv("TWELVEDATA_API_KEY")
-SYMBOLS = {"BTC/USD": "BTC/USD", "XAU/USD": "XAU/USD"}
+SYMBOLS = ["BTC/USD", "XAU/USD"]
 MODELS_DIR = "models"
-INITIAL_CAPITAL = 100
+SEQUENCE_LENGTH = 60
 
-STRATEGIES = {
-    'daily': {
-        'features': ['RSI', 'SMA_50', 'SMA_200', 'MACD_diff'],
-        'feature_func': lambda df: df.assign(
-            RSI=ta.momentum.rsi(df['close'], window=14),
-            SMA_50=ta.trend.sma_indicator(df['close'], window=50),
-            SMA_200=ta.trend.sma_indicator(df['close'], window=200),
-            MACD_diff=ta.trend.macd_diff(df['close'], window_slow=26, window_fast=12, window_sign=9))
-    },
-    'swing': {
-        'features': ['RSI', 'SMA_20', 'EMA_50', 'BB_Width'],
-        'feature_func': lambda df: df.assign(
-            RSI=ta.momentum.rsi(df['close'], window=14),
-            SMA_20=ta.trend.sma_indicator(df['close'], window=20),
-            EMA_50=ta.trend.ema_indicator(df['close'], window=50),
-            BB_Width=ta.volatility.bollinger_wband(df['close'], window=20, window_dev=2))
-    },
-    'genius': {
-        'features': ['ADX', 'ATR', 'Stoch_RSI', 'WilliamsR'],
-        'feature_func': lambda df: df.assign(
-            ADX=ta.trend.adx(df['high'], df['low'], df['close'], window=14),
-            ATR=ta.volatility.average_true_range(df['high'], df['low'], df['close'], window=14),
-            Stoch_RSI=ta.momentum.stochrsi(df['close'], window=14, smooth1=3, smooth2=3),
-            WilliamsR=ta.momentum.williams_r(df['high'], df['low'], df['close'], lbp=14))
-    }
+LSTM_STRATEGY = {
+    'name': 'genius_lstm',
+    'features': ['close', 'RSI', 'MACD_diff', 'WilliamsR', 'ATR', 'sentiment_score'],
+    'feature_func': lambda df: df.assign(
+        RSI=ta.momentum.rsi(df['close'], window=14),
+        MACD_diff=ta.trend.macd_diff(df['close'], window_slow=26, window_fast=12, window_sign=9),
+        WilliamsR=ta.momentum.williams_r(df['high'], df['low'], df['close'], lbp=14),
+        ATR=ta.volatility.average_true_range(df['high'], df['low'], df['close'], window=14)
+    )
 }
 
 # ==============================================================================
 # 2. FUNKTIONEN
 # ==============================================================================
 
-def fetch_historical_data():
-    if not TWELVEDATA_API_KEY:
-        print("FEHLER: TWELVEDATA_API_KEY nicht gefunden.")
-        return
-    print("=== STARTE DATEN-IMPORT (TWELVEDATA) ===")
-    with engine.connect() as conn:
-        for api_symbol, db_symbol in SYMBOLS.items():
-            print(f"\n--- Lade Daten für {api_symbol} ---")
-            try:
-                url = f"https://api.twelvedata.com/time_series?symbol={api_symbol}&interval=1day&outputsize=5000&apikey={TWELVEDATA_API_KEY}"
-                response = requests.get(url, timeout=20)
-                response.raise_for_status()
-                data = response.json()
-                if data.get('status') == 'ok' and 'values' in data:
-                    records = [{'timestamp': datetime.strptime(v['datetime'], '%Y-%m-%d'), 'symbol': db_symbol, 'open': float(v['open']), 'high': float(v['high']), 'low': float(v['low']), 'close': float(v['close']), 'volume': int(v.get('volume', 0))} for v in data['values']]
-                    if not records: continue
-                    print(f"Füge {len(records)} Datensätze ein...")
-                    trans = conn.begin()
-                    try:
-                        for record in records:
-                            stmt = text("""INSERT INTO historical_data_daily (timestamp, symbol, open, high, low, close, volume) VALUES (:timestamp, :symbol, :open, :high, :low, :close, :volume) ON CONFLICT (timestamp, symbol) DO NOTHING""")
-                            conn.execute(stmt, record)
-                        trans.commit()
-                        print(f"✅ Daten für {db_symbol} erfolgreich importiert.")
-                    except Exception as e: trans.rollback(); print(f"FEHLER beim Einfügen: {e}")
-                else: print(f"Fehlerhafte API-Antwort: {data.get('message')}")
-            except Exception as e: print(f"Ein FEHLER ist aufgetreten: {e}")
-    print("\n=== DATEN-IMPORT ABGESCHLOSSEN ===")
-
-def create_target(df, period=5):
-    df['future_return'] = df['close'].pct_change(period).shift(-period)
-    conditions = [(df['future_return'] > 0.02), (df['future_return'] < -0.02)]
-    choices = [1, 0]
-    df['target'] = np.select(conditions, choices, default=2)
+def load_data_with_sentiment(symbol, conn):
+    """
+    Lädt historische Preisdaten UND die dazugehörigen Sentiment-Scores
+    und füllt fehlende Werte intelligent auf.
+    """
+    query = text("""
+        SELECT
+            h.timestamp, h.open, h.high, h.low, h.close, h.volume,
+            COALESCE(s.sentiment_score, 0.0) as sentiment_score
+        FROM historical_data_daily h
+        LEFT JOIN daily_sentiment s ON h.symbol = s.asset AND DATE(h.timestamp) = s.date
+        WHERE h.symbol = :symbol
+        ORDER BY h.timestamp ASC
+    """)
+    df = pd.read_sql_query(query, conn, params={'symbol': symbol})
+    df['sentiment_score'] = df['sentiment_score'].fillna(method='ffill').fillna(0.0)
     return df
 
-def train_all_models():
-    print("=== STARTE MODELL-TRAINING (LGBM) ===")
+def prepare_data_for_lstm(df, features):
+    future_pct_change = df['close'].pct_change(7).shift(-7)
+    df['target'] = 2
+    df.loc[future_pct_change > 0.03, 'target'] = 1
+    df.loc[future_pct_change < -0.03, 'target'] = 0
+    df.replace([np.inf, -np.inf], np.nan, inplace=True)
+    df.dropna(subset=features + ['target'], inplace=True)
+    if len(df) < SEQUENCE_LENGTH + 1: return None, None, None
+    scaler = MinMaxScaler(feature_range=(0,1))
+    scaled_data = scaler.fit_transform(df[features])
+    X, y = [], []
+    for i in range(SEQUENCE_LENGTH, len(scaled_data)):
+        X.append(scaled_data[i-SEQUENCE_LENGTH:i])
+        y.append(df['target'].iloc[i])
+    return np.array(X), np.array(y), scaler
+
+def train_lstm_model():
+    print("=== STARTE LSTM MODELL-TRAINING ===")
     os.makedirs(MODELS_DIR, exist_ok=True)
     with engine.connect() as conn:
-        for symbol in SYMBOLS.values():
+        for symbol in SYMBOLS:
             print(f"\nLade Daten für {symbol}...")
-            df_raw = pd.read_sql_query(text("SELECT * FROM historical_data_daily WHERE symbol = :symbol ORDER BY timestamp"), conn, params={'symbol': symbol})
-            if len(df_raw) < 250: continue
-            for name, config in STRATEGIES.items():
-                print(f"--- Trainiere Modell: {name.upper()} für {symbol} ---")
-                try:
-                    df = config['feature_func'](df_raw.copy()); df = create_target(df); df.dropna(inplace=True)
-                    features = config['features']
-                    X = df[features]; y = df['target']
-                    X_train, _, y_train, _ = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
-                    scaler = StandardScaler().fit(X_train)
-                    X_train_scaled = scaler.transform(X_train)
-                    model = LGBMClassifier(n_estimators=100, random_state=42, class_weight='balanced', verbosity=-1).fit(X_train_scaled, y_train, feature_name=features)
-                    base_path = f"{MODELS_DIR}/model_{name}_{symbol.replace('/', '')}"
-                    joblib.dump(model, f"{base_path}_model.pkl"); joblib.dump(scaler, f"{base_path}_scaler.pkl")
-                    with open(f"{base_path}_features.json", 'w') as f: json.dump(features, f)
-                    print(f"✅ LGBM-Modell gespeichert.")
-                except Exception as e: print(f"FEHLER: {e}")
+            df_raw = load_data_with_sentiment(symbol, conn)
+            if len(df_raw) < SEQUENCE_LENGTH + 50: continue
+            print(f"--- Trainiere LSTM für {symbol} ---")
+            try:
+                df_features = LSTM_STRATEGY['feature_func'](df_raw.copy())
+                X, y, scaler = prepare_data_for_lstm(df_features, LSTM_STRATEGY['features'])
+                if X is None: print("Nicht genügend Daten nach Bereinigung."); continue
+                y_categorical = tf.keras.utils.to_categorical(y, num_classes=3)
+                model = Sequential([
+                    Input(shape=(X.shape[1], X.shape[2])),
+                    LSTM(units=50, return_sequences=True), Dropout(0.2),
+                    LSTM(units=50, return_sequences=False), Dropout(0.2),
+                    Dense(units=25), Dense(units=3, activation='softmax')
+                ])
+                model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+                model.fit(X, y_categorical, epochs=25, batch_size=32, verbose=0)
+                print(f"Training für {symbol} abgeschlossen.")
+                base_path = f"{MODELS_DIR}/model_{LSTM_STRATEGY['name']}_{symbol.replace('/', '')}"
+                model.save(f"{base_path}.keras")
+                joblib.dump(scaler, f"{base_path}_scaler.pkl")
+                print(f"✅ LSTM-Modell für {symbol} gespeichert.")
+            except Exception as e: print(f"FEHLER: {e}")
     print("\n=== MODELL-TRAINING ABGESCHLOSSEN ===")
 
-def backtest_all_models():
-    print("=== STARTE BACKTESTING ===")
-    all_results = {'daily': [], 'swing': [], 'genius': []}
-    equity_curves = {'daily': {}, 'swing': {}, 'genius': {}}
+
+def backtest_lstm_model():
+    print("=== STARTE LSTM BACKTEST (DETAILLIERTE ANALYSE) ===")
     with engine.connect() as conn:
-        for symbol in SYMBOLS.values():
+        for symbol in SYMBOLS:
             print(f"\nLade Daten für Backtest von {symbol}...")
-            df_symbol = pd.read_sql_query(text("SELECT * FROM historical_data_daily WHERE symbol = :symbol ORDER BY timestamp"), conn, params={'symbol': symbol})
-            if df_symbol.empty: continue
-            for name, config in STRATEGIES.items():
-                print(f"-- Starte Backtest für {name.upper()}...")
-                try:
-                    base_path = f"{MODELS_DIR}/model_{name}_{symbol.replace('/', '')}"
-                    model = joblib.load(f"{base_path}_model.pkl"); scaler = joblib.load(f"{base_path}_scaler.pkl")
-                    with open(f"{base_path}_features.json", 'r') as f: features = json.load(f)
-                    df_features = config['feature_func'](df_symbol.copy()).dropna()
-                    X = df_features[features]; X_scaled = scaler.transform(X.values); df_features['signal'] = model.predict(X_scaled)
-                    df_features['daily_return'] = df_features['close'].pct_change()
-                    df_features['strategy_return'] = np.where(df_features['signal'].shift(1) == 1, df_features['daily_return'], np.where(df_features['signal'].shift(1) == 0, -df_features['daily_return'], 0))
-                    df_features['equity_curve'] = INITIAL_CAPITAL * (1 + df_features['strategy_return']).cumprod()
-                    equity_curves[name][symbol] = {'dates': df_features['timestamp'].dt.strftime('%Y-%m-%d').tolist(),'values': df_features['equity_curve'].fillna(INITIAL_CAPITAL).round(2).tolist()}
-                    total_return_pct = df_features['strategy_return'].sum() * 100
-                    trades = df_features[df_features['signal'] != 2]
-                    win_rate = (len(trades[trades['strategy_return'] > 0]) / len(trades) * 100) if not trades.empty else 0
-                    all_results[name].append({'Symbol': symbol, 'Gesamtrendite_%': round(total_return_pct, 2), 'Gewinnrate_%': round(win_rate, 2), 'Anzahl_Trades': len(trades)})
-                    print(f"Ergebnis: {total_return_pct:.2f}% Rendite, {win_rate:.2f}% Gewinnrate")
-                except Exception as e: print(f"FEHLER: {e}")
-    with open('backtest_results.json', 'w') as f: json.dump(all_results, f, indent=4)
-    with open('equity_curves.json', 'w') as f: json.dump(equity_curves, f, indent=4)
+            # HIER IST DIE FINALE KORREKTUR: Wir nutzen die richtige Ladefunktion
+            df_full = load_data_with_sentiment(symbol, conn)
+            if df_full.empty: continue
+            
+            print(f"--- Backteste LSTM für {symbol} ---")
+            try:
+                base_path = f"{MODELS_DIR}/model_{LSTM_STRATEGY['name']}_{symbol.replace('/', '')}"
+                model = load_model(f"{base_path}.keras")
+                scaler = joblib.load(f"{base_path}_scaler.pkl")
+                
+                df_features = LSTM_STRATEGY['feature_func'](df_full.copy()).dropna()
+                
+                all_scaled_data = scaler.transform(df_features[LSTM_STRATEGY['features']])
+                X_backtest = []
+                for i in range(SEQUENCE_LENGTH, len(all_scaled_data)):
+                    X_backtest.append(all_scaled_data[i-SEQUENCE_LENGTH:i])
+                
+                if not X_backtest:
+                    print("Keine Daten für Backtest-Vorhersage vorhanden.")
+                    continue
+                    
+                predictions_proba = model.predict(np.array(X_backtest))
+                predicted_classes = np.argmax(predictions_proba, axis=1)
+
+                df_trade = df_features.iloc[SEQUENCE_LENGTH:].copy()
+                df_trade['signal'] = predicted_classes
+                
+                df_trade['daily_return'] = df_trade['close'].pct_change()
+                long_trades = df_trade[df_trade['signal'] == 1]
+                short_trades = df_trade[df_trade['signal'] == 0]
+
+                long_returns = long_trades['daily_return'].shift(-1)
+                short_returns = -short_trades['daily_return'].shift(-1)
+
+                winning_longs = long_returns[long_returns > 0]
+                winning_shorts = short_returns[short_returns > 0]
+
+                long_win_rate = (len(winning_longs) / len(long_trades) * 100) if not long_trades.empty else 0
+                short_win_rate = (len(winning_shorts) / len(short_trades) * 100) if not short_trades.empty else 0
+                
+                print(f"  -> KAUF-Signale: {len(long_trades)} Trades | Gewinnrate: {long_win_rate:.2f}%")
+                print(f"  -> VERKAUF-Signale: {len(short_trades)} Trades | Gewinnrate: {short_win_rate:.2f}%")
+
+            except Exception as e:
+                print(f"Ein FEHLER ist aufgetreten: {e}")
     print("\n✅ Backtest abgeschlossen.")
 
-def predict_all_signals():
-    print("=== STARTE SIGNAL-GENERATOR ===")
+def predict_with_lstm():
+    print("=== STARTE LSTM SIGNAL-GENERATOR (MIT ALLEM!) ===")
     with engine.connect() as conn:
-        for symbol in SYMBOLS.values():
-            print(f"\nLade Live-Daten für {symbol}...")
-            df_live = pd.read_sql_query(text("SELECT * FROM historical_data_daily WHERE symbol = :symbol ORDER BY timestamp DESC LIMIT 400"), conn, params={'symbol': symbol})
-            df_live = df_live.sort_values(by='timestamp').reset_index(drop=True)
-            if len(df_live) < 250: continue
-            for name, config in STRATEGIES.items():
-                print(f"--- Generiere Signal: {name.upper()} für {symbol} ---")
-                try:
-                    base_path = f"{MODELS_DIR}/model_{name}_{symbol.replace('/', '')}"
-                    model = joblib.load(f"{base_path}_model.pkl"); scaler = joblib.load(f"{base_path}_scaler.pkl")
-                    with open(f"{base_path}_features.json", 'r') as f: features = json.load(f)
-                    df_features = config['feature_func'](df_live.copy()).dropna()
-                    X_predict = df_features[features].tail(1); X_scaled = scaler.transform(X_predict.values); prediction = model.predict(X_scaled)
-                    signal = {0: "Verkaufen", 1: "Kaufen", 2: "Halten"}.get(int(prediction[0]))
-                    price = df_features.iloc[-1]['close']
-                    take_profit, stop_loss = (price * 1.05, price * 0.98) if signal == "Kaufen" else (price * 0.95, price * 1.02) if signal == "Verkaufen" else (None, None)
-                    update_data = {'symbol': symbol, 'strategy': name, 'signal': signal, 'entry_price': price, 'take_profit': take_profit, 'stop_loss': stop_loss, 'last_updated': datetime.now(timezone.utc)}
-                    stmt = insert(predictions).values(update_data); stmt = stmt.on_conflict_do_update(index_elements=['symbol', 'strategy'], set_=update_data); conn.execute(stmt); conn.commit()
-                    print(f"✅ Signal erfolgreich gespeichert.")
-                except Exception as e: print(f"FEHLER: {e}")
+        for symbol in SYMBOLS:
+            print(f"\nLade Live-Daten & Sentiment für {symbol}...")
+            df_live = load_data_with_sentiment(symbol, conn)
+            if len(df_live) < SEQUENCE_LENGTH: continue
+            print(f"--- Generiere LSTM-Signal für {symbol} ---")
+            try:
+                base_path = f"{MODELS_DIR}/model_{LSTM_STRATEGY['name']}_{symbol.replace('/', '')}"
+                model = load_model(f"{base_path}.keras")
+                scaler = joblib.load(f"{base_path}_scaler.pkl")
+                df_features = LSTM_STRATEGY['feature_func'](df_live.copy()).dropna()
+                last_sequence = df_features[LSTM_STRATEGY['features']].tail(SEQUENCE_LENGTH)
+                last_sequence_scaled = scaler.transform(last_sequence)
+                X_predict = np.array([last_sequence_scaled])
+                prediction_proba = model.predict(X_predict)[0]
+                confidence = round(np.max(prediction_proba) * 100, 2)
+                predicted_class = np.argmax(prediction_proba)
+                signal = {0: "Verkaufen", 1: "Kaufen", 2: "Halten"}.get(predicted_class, "Unbekannt")
+                price = df_features.iloc[-1]['close']
+                atr_value = df_features.iloc[-1]['ATR']
+                take_profit, stop_loss = None, None
+                if signal == "Kaufen":
+                    take_profit = price + (2.5 * atr_value)
+                    stop_loss = price - (1.5 * atr_value)
+                elif signal == "Verkaufen":
+                    take_profit = price - (2.5 * atr_value)
+                    stop_loss = price + (1.5 * atr_value)
+                update_data = {'symbol': symbol, 'strategy': 'genius_lstm', 'signal': signal, 'confidence': confidence, 'entry_price': price, 'take_profit': take_profit, 'stop_loss': stop_loss, 'last_updated': datetime.now(timezone.utc)}
+                stmt = insert(predictions).values(update_data); stmt = stmt.on_conflict_do_update(index_elements=['symbol', 'strategy'], set_=update_data); conn.execute(stmt); conn.commit()
+                print(f"✅ Signal gespeichert: {signal} (Konfidenz: {confidence}%)")
+            except Exception as e: print(f"FEHLER: {e}")
     print("\n=== SIGNAL-GENERATOR ABGESCHLOSSEN ===")
-
 
 # ==============================================================================
 # 4. STEUERUNG
 # ==============================================================================
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Master-Controller für die Finanz-App.")
-    # KORREKTUR: Wir fügen 'fetch-data' zu den gültigen Befehlen hinzu
-    parser.add_argument("mode", choices=['fetch-data', 'train', 'backtest', 'predict'], help="Der auszuführende Modus.")
+    # Wir fügen den neuen Backtest-Modus hinzu
+    parser.add_argument("mode", choices=['train-lstm', 'predict-lstm', 'backtest-lstm'], help="Der auszuführende Modus.")
     args = parser.parse_args()
 
-    # KORREKTUR: Wir rufen die richtige Funktion für den 'fetch-data'-Modus auf
-    if args.mode == 'fetch-data':
-        fetch_historical_data()
-    elif args.mode == 'train':
-        train_all_models()
-    elif args.mode == 'backtest':
-        # Für einen sinnvollen Backtest müssen die Modelle trainiert sein.
-        # Es ist am besten, dies manuell oder durch einen separaten Cron Job zu steuern.
-        # Wir trainieren hier nicht jedes Mal neu, sondern verwenden die vorhandenen Modelle.
-        backtest_all_models()
-    elif args.mode == 'predict':
-        predict_all_signals()
+    if args.mode == 'train-lstm':
+        train_lstm_model()
+    elif args.mode == 'predict-lstm':
+        predict_with_lstm()
+    elif args.mode == 'backtest-lstm':
+        backtest_lstm_model()
