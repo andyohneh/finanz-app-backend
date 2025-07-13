@@ -3,18 +3,20 @@ import requests
 import os
 from datetime import datetime
 from sqlalchemy import text
+from sqlalchemy.dialects.postgresql import insert
 from dotenv import load_dotenv
 
+# Eigene Module importieren
 from database import engine
 
 # --- KONFIGURATION ---
 load_dotenv()
 TWELVEDATA_API_KEY = os.getenv("TWELVEDATA_API_KEY")
 
-# Symbole im API-Format und DB-Format
+# Symbole, die wir von der API abrufen
 SYMBOLS = {
     "BTC/USD": "BTC/USD",
-    "XAU/USD": "XAU/USD" # Gold wird von Twelvedata direkt unterstützt
+    "XAU/USD": "XAU/USD" 
 }
 
 def load_historical_data():
@@ -34,7 +36,7 @@ def load_historical_data():
             try:
                 # Wir holen bis zu 5000 Datenpunkte für eine solide Historie
                 url = f"https://api.twelvedata.com/time_series?symbol={api_symbol}&interval=1day&outputsize=5000&apikey={TWELVEDATA_API_KEY}"
-                response = requests.get(url)
+                response = requests.get(url, timeout=30)
                 response.raise_for_status()
                 data = response.json()
 
@@ -58,10 +60,11 @@ def load_historical_data():
                     print(f"Füge {len(records)} Datensätze für {db_symbol} ein...")
                     trans = conn.begin()
                     try:
+                        # Wir verwenden einen direkten SQL-Befehl für maximale Stabilität
                         for record in records:
                             stmt = text("""
-                                INSERT INTO historical_data_daily (timestamp, symbol, open, high, low, close, volume)
-                                VALUES (:timestamp, :symbol, :open, :high, :low, :close, :volume)
+                                INSERT INTO historical_data_daily (timestamp, symbol, open, high, low, close, volume) 
+                                VALUES (:timestamp, :symbol, :open, :high, :low, :close, :volume) 
                                 ON CONFLICT (timestamp, symbol) DO NOTHING
                             """)
                             conn.execute(stmt, record)
