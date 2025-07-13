@@ -43,7 +43,7 @@
               </tr>
             </thead>
             <tbody>
-              {% for result in results.daily %}
+              {% for result in results.genius_lstm %}
               <tr>
                 <td><strong>{{ result.Symbol }}</strong></td>
                 <td
@@ -51,7 +51,8 @@
                 >
                   {{ "%.2f"|format(result['Gesamtrendite_%']) }}%
                 </td>
-                <td>{{ "%.2f"|format(result['Gewinnrate_%']) }}%</td>
+                <td>{{ "%.2f"|format(result['Long_Gewinnrate_%']) }}%</td>
+                <td>{{ "%.2f"|format(result['Short_Gewinnrate_%']) }}%</td>
                 <td>{{ result.Anzahl_Trades }}</td>
               </tr>
               {% endfor %}

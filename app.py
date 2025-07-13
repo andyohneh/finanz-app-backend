@@ -34,8 +34,9 @@ def dashboard():
 # --- API ROUTEN ---
 @app.route('/api/assets')
 def get_assets():
-    """Stellt die Live-Signale für die Webseite bereit."""
-    strategy = request.args.get('strategy', 'daily')
+    """Stellt die Live-Signale inkl. Konfidenz bereit."""
+    # Wir zeigen standardmäßig die Signale unserer neuen LSTM-Strategie
+    strategy = request.args.get('strategy', 'genius_lstm') 
     assets_data = []
     try:
         with engine.connect() as conn:
@@ -54,6 +55,8 @@ def get_assets():
                 
                 assets_data.append({
                     "asset": prediction.get('symbol', 'N/A').replace('/', ''),
+                    # NEU: Konfidenz-Wert wird hinzugefügt
+                    "confidence": f"{prediction.get('confidence', 0.0):.2f}",
                     "entry": f"{prediction.get('entry_price'):.4f}" if prediction.get('entry_price') else "N/A",
                     "takeProfit": f"{prediction.get('take_profit'):.4f}" if prediction.get('take_profit') else "N/A",
                     "stopLoss": f"{prediction.get('stop_loss'):.4f}" if prediction.get('stop_loss') else "N/A",
