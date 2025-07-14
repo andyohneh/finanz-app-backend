@@ -1,4 +1,4 @@
-# backend/master_controller.py (Finale Version mit Google Cloud Anbindung)
+# backend/master_controller.py (Die finale, unzerstörbare LSTM-Version)
 import pandas as pd
 import numpy as np
 import joblib
@@ -10,32 +10,37 @@ import argparse
 from datetime import datetime, timezone
 from dotenv import load_dotenv
 
-# NEU: Google Cloud Bibliotheken
-from google.cloud import storage
-
 # Machine Learning Bibliotheken
-from sklearn.model_selection import train_test_split
-from lightgbm import LGBMClassifier
-from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import train_test_split # HIER IST DIE KORREKTUR
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
+import tensorflow as tf
+from keras.models import Sequential, load_model
+from keras.layers import Input, LSTM, Dense, Dropout
+
+# Datenbank-Anbindung & Cloud
 from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import insert
+from google.cloud import storage
 from database import engine, predictions
 
 # ==============================================================================
 # 1. ZENTRALE KONFIGURATION
 # ==============================================================================
 load_dotenv()
-# NEU: Google Cloud Konfiguration
 GCS_BUCKET_NAME = os.getenv("GCS_BUCKET_NAME")
-
 SYMBOLS = ["BTC/USD", "XAU/USD"]
 MODELS_DIR = "models"
-INITIAL_CAPITAL = 100
+SEQUENCE_LENGTH = 60 
 
-STRATEGIES = {
-    'daily': {'features': ['RSI', 'ATR', 'MACD_diff', 'Stoch'], 'feature_func': lambda df: df.assign(RSI=ta.momentum.rsi(df['close'], window=14), ATR=ta.volatility.average_true_range(df['high'], df['low'], df['close'], window=14), MACD_diff=ta.trend.macd_diff(df['close'], window_slow=26, window_fast=12, window_sign=9), Stoch=ta.momentum.stoch(df['high'], df['low'], df['close'], window=14, smooth_window=3))},
-    'swing': {'features': ['BB_Width', 'RSI', 'WilliamsR', 'SMA_20'], 'feature_func': lambda df: df.assign(RSI=ta.momentum.rsi(df['close'], window=14), SMA_20=ta.trend.sma_indicator(df['close'], window=20), BB_Width=ta.volatility.bollinger_wband(df['close'], window=20, window_dev=2), WilliamsR=ta.momentum.williams_r(df['high'], df['low'], df['close'], lbp=14))},
-    'genius': {'features': ['ATR', 'ADX', 'CCI', 'WilliamsR'], 'feature_func': lambda df: df.assign(ADX=ta.trend.adx(df['high'], df['low'], df['close'], window=14), ATR=ta.volatility.average_true_range(df['high'], df['low'], df['close'], window=14), WilliamsR=ta.momentum.williams_r(df['high'], df['low'], df['close'], lbp=14), CCI=ta.trend.cci(df['high'], df['low'], df['close'], window=20))}
+LSTM_STRATEGY = {
+    'name': 'genius_lstm',
+    'features': ['close', 'RSI', 'MACD_diff', 'WilliamsR', 'ATR'],
+    'feature_func': lambda df: df.assign(
+        RSI=ta.momentum.rsi(df['close'], window=14),
+        MACD_diff=ta.trend.macd_diff(df['close'], window_slow=26, window_fast=12, window_sign=9),
+        WilliamsR=ta.momentum.williams_r(df['high'], df['low'], df['close'], lbp=14),
+        ATR=ta.volatility.average_true_range(df['high'], df['low'], df['close'], window=14)
+    )
 }
 
 # ==============================================================================
@@ -43,19 +48,17 @@ STRATEGIES = {
 # ==============================================================================
 
 def upload_to_gcs(source_file_name, destination_blob_name):
-    """Lädt eine lokale Datei in den Google Cloud Storage Bucket hoch."""
     if not GCS_BUCKET_NAME: print("GCS_BUCKET_NAME nicht konfiguriert."); return
     try:
         storage_client = storage.Client()
         bucket = storage_client.bucket(GCS_BUCKET_NAME)
         blob = bucket.blob(destination_blob_name)
         blob.upload_from_filename(source_file_name)
-        print(f"✅ Datei {source_file_name} erfolgreich nach gs://{GCS_BUCKET_NAME}/{destination_blob_name} hochgeladen.")
+        print(f"✅ Datei {source_file_name} nach gs://{GCS_BUCKET_NAME}/{destination_blob_name} hochgeladen.")
     except Exception as e:
         print(f"❌ Fehler beim GCS-Upload: {e}")
 
 def download_from_gcs(source_blob_name, destination_file_name):
-    """Lädt eine Datei aus dem GCS Bucket herunter."""
     if not GCS_BUCKET_NAME: print("GCS_BUCKET_NAME nicht konfiguriert."); return
     try:
         os.makedirs(os.path.dirname(destination_file_name), exist_ok=True)
@@ -63,112 +66,191 @@ def download_from_gcs(source_blob_name, destination_file_name):
         bucket = storage_client.bucket(GCS_BUCKET_NAME)
         blob = bucket.blob(source_blob_name)
         blob.download_to_filename(destination_file_name)
-        print(f"✅ Datei gs://{GCS_BUCKET_NAME}/{source_blob_name} erfolgreich heruntergeladen.")
     except Exception as e:
         print(f"❌ Fehler beim GCS-Download von {source_blob_name}: {e}")
-        raise # Fehler weitergeben, damit der Prozess abbricht
+        raise
 
-def create_target(df, period=5):
-    df['future_return'] = df['close'].pct_change(period).shift(-period)
-    conditions = [(df['future_return'] > 0.02), (df['future_return'] < -0.02)]
-    choices = [1, 0]; df['target'] = np.select(conditions, choices, default=2)
-    return df
+def prepare_data_for_lstm(df, features):
+    future_pct_change = df['close'].pct_change(7).shift(-7)
+    df['target'] = 2
+    df.loc[future_pct_change > 0.03, 'target'] = 1
+    df.loc[future_pct_change < -0.03, 'target'] = 0
+    df.replace([np.inf, -np.inf], np.nan, inplace=True)
+    df.dropna(subset=features + ['target'], inplace=True)
+    if len(df) < SEQUENCE_LENGTH + 1: return None, None, None
+    scaler = MinMaxScaler(feature_range=(0,1))
+    scaled_data = scaler.fit_transform(df[features])
+    X, y = [], []
+    for i in range(SEQUENCE_LENGTH, len(scaled_data)):
+        X.append(scaled_data[i-SEQUENCE_LENGTH:i])
+        y.append(df['target'].iloc[i])
+    return np.array(X), np.array(y), scaler
 
 # ==============================================================================
 # 3. KERNFUNKTIONEN (TRAIN, BACKTEST, PREDICT)
 # ==============================================================================
 
-def train_all_models():
-    print("=== STARTE MODELL-TRAINING (LOKAL) & UPLOAD ZU GCS ===")
+# In backend/master_controller.py -> die Funktion train_lstm_model ersetzen
+
+def train_lstm_model():
+    print("=== STARTE LSTM MODELL-TRAINING (MIT EARLY STOPPING) ===")
     os.makedirs(MODELS_DIR, exist_ok=True)
     with engine.connect() as conn:
         for symbol in SYMBOLS:
             print(f"\nLade Daten für {symbol}...")
             df_raw = pd.read_sql_query(text("SELECT * FROM historical_data_daily WHERE symbol = :symbol ORDER BY timestamp"), conn, params={'symbol': symbol})
-            if len(df_raw) < 250: continue
+            if len(df_raw) < SEQUENCE_LENGTH + 50: continue
 
-            for name, config in STRATEGIES.items():
-                print(f"--- Trainiere Modell: {name.upper()} für {symbol} ---")
-                try:
-                    df = config['feature_func'](df_raw.copy()); df = create_target(df); df.dropna(inplace=True)
-                    features = config['features']; X = df[features]; y = df['target']
-                    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
-                    scaler = StandardScaler().fit(X_train); X_train_scaled = scaler.transform(X_train); X_test_scaled = scaler.transform(X_test)
+            print(f"--- Trainiere LSTM für {symbol} ---")
+            try:
+                df_features = LSTM_STRATEGY['feature_func'](df_raw.copy())
+                X, y, scaler = prepare_data_for_lstm(df_features, LSTM_STRATEGY['features'])
+                if X is None: 
+                    print("Nicht genügend Daten nach Bereinigung.")
+                    continue
+                
+                # Wir teilen die Daten auf, um einen "Prüfungsbogen" (Validierungsset) zu haben
+                X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42)
+                
+                y_train_cat = tf.keras.utils.to_categorical(y_train, num_classes=3)
+                y_val_cat = tf.keras.utils.to_categorical(y_val, num_classes=3)
+
+                model = Sequential([
+                    Input(shape=(X.shape[1], X.shape[2])),
+                    LSTM(units=50, return_sequences=True), Dropout(0.2),
+                    LSTM(units=50, return_sequences=False), Dropout(0.2),
+                    Dense(units=25), 
+                    Dense(units=3, activation='softmax')
+                ])
+                model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+                
+                # NEU: Der "Gedulds-Wächter" (Early Stopping)
+                # Er stoppt das Training, wenn sich der Fehler auf dem Prüfungsbogen (val_loss) 
+                # für 10 Runden (patience=10) nicht verbessert.
+                early_stopping = tf.keras.callbacks.EarlyStopping(
+                    monitor='val_loss', 
+                    patience=10, 
+                    restore_best_weights=True
+                )
+                
+                print("Starte intelligentes Training... (stoppt automatisch, wenn optimal)")
+                # Wir erhöhen die Epochen auf eine hohe Zahl (z.B. 200), da die KI sowieso vorher aufhört.
+                model.fit(
+                    X_train, 
+                    y_train_cat, 
+                    epochs=200, 
+                    batch_size=32, 
+                    validation_data=(X_val, y_val_cat),
+                    callbacks=[early_stopping], # Hier wird der Wächter aktiviert
+                    verbose=1
+                )
+                
+                base_path = f"{MODELS_DIR}/model_{LSTM_STRATEGY['name']}_{symbol.replace('/', '')}"
+                model.save(f"{base_path}.keras")
+                joblib.dump(scaler, f"{base_path}_scaler.pkl")
+                print(f"✅ Optimales LSTM-Modell für {symbol} gespeichert.")
+                
+                # Optional: Lade die fertigen Modelle in die Cloud
+                # upload_to_gcs(...)
+
+            except Exception as e: 
+                print(f"FEHLER: {e}")
+                
+    print("\n=== MODELL-TRAINING ABGESCHLOSSEN ===")
+
+def backtest_lstm_model():
+    print("=== STARTE LSTM BACKTEST (VON GCS) ===")
+    with engine.connect() as conn:
+        for symbol in SYMBOLS:
+            print(f"\nLade Daten für Backtest von {symbol}...")
+            df_full = pd.read_sql_query(text("SELECT * FROM historical_data_daily WHERE symbol = :symbol ORDER BY timestamp"), conn, params={'symbol': symbol})
+            if df_full.empty: continue
+            print(f"--- Backteste LSTM für {symbol} ---")
+            try:
+                base_path_gcs = f"models/model_{LSTM_STRATEGY['name']}_{symbol.replace('/', '')}"
+                base_path_local = f"{MODELS_DIR}/model_{LSTM_STRATEGY['name']}_{symbol.replace('/', '')}"
+                download_from_gcs(f"{base_path_gcs}.keras", f"{base_path_local}.keras")
+                download_from_gcs(f"{base_path_gcs}_scaler.pkl", f"{base_path_local}_scaler.pkl")
+                
+                model = load_model(f"{base_path_local}.keras")
+                scaler = joblib.load(f"{base_path_local}_scaler.pkl")
+                
+                df_features = LSTM_STRATEGY['feature_func'](df_full.copy()).dropna()
+                all_scaled_data = scaler.transform(df_features[LSTM_STRATEGY['features']])
+                X_backtest = []
+                for i in range(SEQUENCE_LENGTH, len(all_scaled_data)):
+                    X_backtest.append(all_scaled_data[i-SEQUENCE_LENGTH:i])
+                
+                if not X_backtest: print("Keine Daten für Backtest-Vorhersage."); continue
                     
-                    model = LGBMClassifier(n_estimators=100, random_state=42, class_weight='balanced', verbosity=-1).fit(X_train_scaled, y_train, feature_name=features)
-                    
-                    y_pred = model.predict(X_test_scaled)
-                    accuracy = (y_pred == y_test).mean()
-                    print(f"Modell-Genauigkeit: {accuracy:.2f}")
+                predictions_proba = model.predict(np.array(X_backtest))
+                predicted_classes = np.argmax(predictions_proba, axis=1)
+                
+                df_trade = df_features.iloc[SEQUENCE_LENGTH:].copy()
+                df_trade['signal'] = predicted_classes
+                
+                df_trade['daily_return'] = df_trade['close'].pct_change()
+                long_trades = df_trade[df_trade['signal'] == 1]
+                short_trades = df_trade[df_trade['signal'] == 0]
+                long_returns = long_trades['daily_return'].shift(-1)
+                short_returns = -short_trades['daily_return'].shift(-1)
+                winning_longs = long_returns[long_returns > 0]
+                winning_shorts = short_returns[short_returns > 0]
+                long_win_rate = (len(winning_longs) / len(long_trades) * 100) if not long_trades.empty else 0
+                short_win_rate = (len(winning_shorts) / len(short_trades) * 100) if not short_trades.empty else 0
+                
+                print(f"  -> KAUF-Signale: {len(long_trades)} Trades | Gewinnrate: {long_win_rate:.2f}%")
+                print(f"  -> VERKAUF-Signale: {len(short_trades)} Trades | Gewinnrate: {short_win_rate:.2f}%")
+            except Exception as e:
+                print(f"Ein FEHLER ist aufgetreten: {e}")
+    print("\n✅ Backtest abgeschlossen.")
 
-                    base_path_local = f"{MODELS_DIR}/model_{name}_{symbol.replace('/', '')}"
-                    base_path_gcs = f"models/model_{name}_{symbol.replace('/', '')}" # Pfad im Bucket
-
-                    joblib.dump(model, f"{base_path_local}_model.pkl")
-                    joblib.dump(scaler, f"{base_path_local}_scaler.pkl")
-                    with open(f"{base_path_local}_features.json", 'w') as f: json.dump(features, f)
-                    
-                    # Lade die fertigen Modelle in die Cloud
-                    upload_to_gcs(f"{base_path_local}_model.pkl", f"{base_path_gcs}_model.pkl")
-                    upload_to_gcs(f"{base_path_local}_scaler.pkl", f"{base_path_gcs}_scaler.pkl")
-                    upload_to_gcs(f"{base_path_local}_features.json", f"{base_path_gcs}_features.json")
-                    
-                except Exception as e: print(f"Ein FEHLER ist aufgetreten: {e}")
-    print("\n=== MODELL-TRAINING & UPLOAD ABGESCHLOSSEN ===")
-
-
-def predict_all_signals():
-    print("=== STARTE SIGNAL-GENERATOR (VON GCS) ===")
+def predict_with_lstm():
+    print("=== STARTE LSTM SIGNAL-GENERATOR (VON GCS) ===")
     with engine.connect() as conn:
         for symbol in SYMBOLS:
             print(f"\nLade Live-Daten für {symbol}...")
-            df_live = pd.read_sql_query(text("SELECT * FROM historical_data_daily WHERE symbol = :symbol ORDER BY timestamp DESC LIMIT 400"), conn, params={'symbol': symbol})
+            df_live = pd.read_sql_query(text("SELECT * FROM historical_data_daily WHERE symbol = :symbol ORDER BY timestamp DESC LIMIT 100"), conn, params={'symbol': symbol})
             df_live = df_live.sort_values(by='timestamp').reset_index(drop=True)
-            if len(df_live) < 250: continue
-
-            for name, config in STRATEGIES.items():
-                print(f"--- Generiere Signal: {name.upper()} für {symbol} ---")
-                try:
-                    # Lade die neuesten Modelle aus der Cloud herunter
-                    base_path_gcs = f"models/model_{name}_{symbol.replace('/', '')}"
-                    base_path_local = f"{MODELS_DIR}/model_{name}_{symbol.replace('/', '')}"
-                    
-                    download_from_gcs(f"{base_path_gcs}_model.pkl", f"{base_path_local}_model.pkl")
-                    download_from_gcs(f"{base_path_gcs}_scaler.pkl", f"{base_path_local}_scaler.pkl")
-                    download_from_gcs(f"{base_path_gcs}_features.json", f"{base_path_local}_features.json")
-
-                    model = joblib.load(f"{base_path_local}_model.pkl")
-                    scaler = joblib.load(f"{base_path_local}_scaler.pkl")
-                    with open(f"{base_path_local}_features.json", 'r') as f: features = json.load(f)
-                    
-                    df_features = config['feature_func'](df_live.copy()).dropna()
-                    X_predict = df_features[features].tail(1)
-                    X_scaled = scaler.transform(X_predict.values)
-                    prediction = model.predict(X_predict)
-                    
-                    signal = {0: "Verkaufen", 1: "Kaufen", 2: "Halten"}.get(int(prediction[0]))
-                    price = df_features.iloc[-1]['close']
-                    take_profit, stop_loss = (price * 1.05, price * 0.98) if signal == "Kaufen" else (price * 0.95, price * 1.02) if signal == "Verkaufen" else (None, None)
-                    update_data = {'symbol': symbol, 'strategy': name, 'signal': signal, 'entry_price': price, 'take_profit': take_profit, 'stop_loss': stop_loss, 'last_updated': datetime.now(timezone.utc)}
-                    
-                    stmt = insert(predictions).values(update_data)
-                    stmt = stmt.on_conflict_do_update(index_elements=['symbol', 'strategy'], set_=update_data)
-                    conn.execute(stmt)
-                    conn.commit()
-                    print(f"✅ Signal erfolgreich gespeichert.")
-                except Exception as e: print(f"FEHLER: {e}")
+            if len(df_live) < SEQUENCE_LENGTH: continue
+            print(f"--- Generiere LSTM-Signal für {symbol} ---")
+            try:
+                base_path_gcs = f"models/model_{LSTM_STRATEGY['name']}_{symbol.replace('/', '')}"
+                base_path_local = f"{MODELS_DIR}/model_{LSTM_STRATEGY['name']}_{symbol.replace('/', '')}"
+                download_from_gcs(f"{base_path_gcs}.keras", f"{base_path_local}.keras")
+                download_from_gcs(f"{base_path_gcs}_scaler.pkl", f"{base_path_local}_scaler.pkl")
+                
+                model = load_model(f"{base_path_local}.keras")
+                scaler = joblib.load(f"{base_path_local}_scaler.pkl")
+                
+                df_features = LSTM_STRATEGY['feature_func'](df_live.copy()).dropna()
+                last_sequence = df_features[LSTM_STRATEGY['features']].tail(SEQUENCE_LENGTH)
+                last_sequence_scaled = scaler.transform(last_sequence)
+                X_predict = np.array([last_sequence_scaled])
+                prediction_proba = model.predict(X_predict)[0]
+                confidence = round(np.max(prediction_proba) * 100, 2)
+                predicted_class = np.argmax(prediction_proba)
+                signal = {0: "Verkaufen", 1: "Kaufen", 2: "Halten"}.get(predicted_class, "Unbekannt")
+                price = df_features.iloc[-1]['close']
+                atr_value = df_features.iloc[-1]['ATR']
+                take_profit, stop_loss = (price + (2.5 * atr_value), price - (1.5 * atr_value)) if signal == "Kaufen" else (price - (2.5 * atr_value), price + (1.5 * atr_value)) if signal == "Verkaufen" else (None, None)
+                update_data = {'symbol': symbol, 'strategy': 'genius_lstm', 'signal': signal, 'confidence': confidence, 'entry_price': price, 'take_profit': take_profit, 'stop_loss': stop_loss, 'last_updated': datetime.now(timezone.utc)}
+                stmt = insert(predictions).values(update_data); stmt = stmt.on_conflict_do_update(index_elements=['symbol', 'strategy'], set_=update_data); conn.execute(stmt); conn.commit()
+                print(f"✅ Signal gespeichert: {signal} (Konfidenz: {confidence}%)")
+            except Exception as e: print(f"FEHLER: {e}")
     print("\n=== SIGNAL-GENERATOR ABGESCHLOSSEN ===")
-
 
 # ==============================================================================
 # 4. STEUERUNG
 # ==============================================================================
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Master-Controller für die Finanz-App.")
-    parser.add_argument("mode", choices=['train', 'predict'], help="Der auszuführende Modus.")
+    parser.add_argument("mode", choices=['train-lstm', 'predict-lstm', 'backtest-lstm'], help="Der auszuführende Modus.")
     args = parser.parse_args()
 
-    if args.mode == 'train':
-        train_all_models()
-    elif args.mode == 'predict':
-        predict_all_signals()
+    if args.mode == 'train-lstm':
+        train_lstm_model()
+    elif args.mode == 'predict-lstm':
+        predict_with_lstm()
+    elif args.mode == 'backtest-lstm':
+        backtest_lstm_model()
