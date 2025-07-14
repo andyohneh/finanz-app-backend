@@ -43,13 +43,6 @@
       </header>
 
       <main>
-        <div class="strategy-tabs">
-          <button class="strategy-tab active" data-strategy="daily">
-            Daily
-          </button>
-          <button class="strategy-tab" data-strategy="swing">Swing</button>
-          <button class="strategy-tab" data-strategy="genius">Genius</button>
-        </div>
         <div class="signal-cards-container"></div>
       </main>
 
@@ -75,15 +68,12 @@
         const closeModal = document.querySelector(".close-button");
         const chartContainer = document.getElementById("chart-container");
         const chartAssetTitle = document.getElementById("chart-asset-title");
-        const strategyTabs = document.querySelectorAll(".strategy-tab");
-
         let chart = null;
-        let currentStrategy = "daily"; // Start-Strategie
 
-        // Funktion, die Signale für eine bestimmte Strategie abruft
-        function fetchSignalData(strategy) {
+        function fetchSignalData() {
           signalCardsContainer.innerHTML = '<div class="loader"></div>';
-          fetch(`/api/assets?strategy=${strategy}`)
+          // Wir rufen jetzt immer die Signale unserer Super-Strategie ab
+          fetch("/api/assets?strategy=genius_lstm")
             .then((response) => {
               if (!response.ok)
                 throw new Error(`HTTP-Fehler! Status: ${response.status}`);
@@ -93,26 +83,23 @@
               signalCardsContainer.innerHTML = "";
               if (data.length === 0) {
                 signalCardsContainer.innerHTML =
-                  '<p class="error-msg">Keine Signale für diese Strategie verfügbar.</p>';
+                  '<p class="error-msg">Keine Signale verfügbar.</p>';
                 return;
               }
               data.forEach((asset) => {
                 const card = document.createElement("div");
                 card.className = `signal-card ${asset.color}`;
                 card.innerHTML = `
-                    <div class="card-header">
-                        <span class="asset-name">${asset.asset}</span>
-                        <span class="material-icons icon">${asset.icon}</span>
-                    </div>
-                    <div class="card-body">
-                        <div class="trade-info"><strong>Signal:</strong> ${asset.signal}</div>
-                        <div class="trade-info"><strong>Konfidenz:</strong> ${asset.confidence}%</div>
-                        <div class="trade-info"><strong>Einstieg:</strong> ${asset.entry}</div>
-                        <div class="trade-info"><strong>Take Profit:</strong> ${asset.takeProfit}</div>
-                        <div class="trade-info"><strong>Stop Loss:</strong> ${asset.stopLoss}</div>
-                    </div>
-                    <div class="card-footer"><small>Letztes Update: ${asset.timestamp}</small></div>
-                `;
+                            <div class="card-header"><span class="asset-name">${asset.asset}</span><span class="material-icons icon">${asset.icon}</span></div>
+                            <div class="card-body">
+                                <div class="trade-info"><strong>Signal:</strong> ${asset.signal}</div>
+                                <div class="trade-info"><strong>Konfidenz:</strong> ${asset.confidence}%</div>
+                                <div class="trade-info"><strong>Einstieg:</strong> ${asset.entry}</div>
+                                <div class="trade-info"><strong>Take Profit:</strong> ${asset.takeProfit}</div>
+                                <div class="trade-info"><strong>Stop Loss:</strong> ${asset.stopLoss}</div>
+                            </div>
+                            <div class="card-footer"><small>Letztes Update: ${asset.timestamp}</small></div>
+                        `;
                 card.addEventListener("click", () =>
                   openChartModal(asset.asset)
                 );
@@ -120,33 +107,15 @@
               });
             })
             .catch((error) => {
-              console.error(
-                `Fehler beim Laden der ${strategy}-Signale:`,
-                error
-              );
+              console.error("Fehler beim Laden der Signale:", error);
               signalCardsContainer.innerHTML =
                 '<p class="error-msg">Signale konnten nicht geladen werden.</p>';
             });
         }
 
-        // Event-Listener für die Tabs
-        strategyTabs.forEach((tab) => {
-          tab.addEventListener("click", () => {
-            // Aktiven Status aktualisieren
-            strategyTabs.forEach((t) => t.classList.remove("active"));
-            tab.classList.add("active");
-
-            // Neue Strategie laden
-            currentStrategy = tab.dataset.strategy;
-            fetchSignalData(currentStrategy);
-          });
-        });
-
         function openChartModal(symbol) {
-          // ... (diese Funktion bleibt unverändert)
           chartAssetTitle.textContent = `${symbol} Chart (Täglich)`;
           modal.style.display = "block";
-
           if (chart) {
             chart.destroy();
             chart = null;
@@ -183,7 +152,6 @@
               chart.render();
             })
             .catch((error) => {
-              console.error("Fehler beim Laden der Chart-Daten:", error);
               chartContainer.innerHTML =
                 '<p class="error-msg">Chart konnte nicht geladen werden.</p>';
             });
@@ -196,8 +164,8 @@
           if (event.target == modal) modal.style.display = "none";
         };
 
-        // Initiale Signale für die 'daily' Strategie laden
-        fetchSignalData(currentStrategy);
+        fetchSignalData();
+        setInterval(fetchSignalData, 60000);
       });
     </script>
   </body>

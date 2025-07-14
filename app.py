@@ -33,9 +33,11 @@ def dashboard():
 
 # --- API ROUTEN ---
 @app.route('/api/assets')
+# In backend/app.py -> die Funktion get_assets ersetzen
+@app.route('/api/assets')
 def get_assets():
-    """Stellt die Live-Signale inkl. Konfidenz bereit."""
-    # Wir zeigen standardmäßig die Signale unserer neuen LSTM-Strategie
+    """Stellt die Live-Signale für die Webseite bereit."""
+    # KORREKTUR: Wir fragen standardmäßig nach unserer neuen Super-Strategie
     strategy = request.args.get('strategy', 'genius_lstm') 
     assets_data = []
     try:
@@ -46,23 +48,17 @@ def get_assets():
             for row in db_results:
                 prediction = row._asdict()
                 signal_text = prediction.get('signal', 'Halten')
-                
                 color, icon = "grey", "circle"
-                if signal_text == "Kaufen":
-                    color, icon = "green", "arrow-up"
-                elif signal_text == "Verkaufen":
-                    color, icon = "red", "arrow-down"
+                if signal_text == "Kaufen": color, icon = "green", "arrow-up"
+                elif signal_text == "Verkaufen": color, icon = "red", "arrow-down"
                 
                 assets_data.append({
                     "asset": prediction.get('symbol', 'N/A').replace('/', ''),
-                    # NEU: Konfidenz-Wert wird hinzugefügt
                     "confidence": f"{prediction.get('confidence', 0.0):.2f}",
                     "entry": f"{prediction.get('entry_price'):.4f}" if prediction.get('entry_price') else "N/A",
                     "takeProfit": f"{prediction.get('take_profit'):.4f}" if prediction.get('take_profit') else "N/A",
                     "stopLoss": f"{prediction.get('stop_loss'):.4f}" if prediction.get('stop_loss') else "N/A",
-                    "signal": signal_text,
-                    "color": color,
-                    "icon": icon,
+                    "signal": signal_text, "color": color, "icon": icon,
                     "timestamp": prediction.get('last_updated').strftime('%Y-%m-%d %H:%M:%S') if prediction.get('last_updated') else "N/A"
                 })
         return jsonify(assets_data)
