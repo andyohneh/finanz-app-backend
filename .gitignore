@@ -3,3 +3,4 @@ venv/
 __pycache__/
 *.pyc
 gcloud-key.json
+gcp_credentials.json
