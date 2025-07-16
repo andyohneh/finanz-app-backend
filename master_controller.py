@@ -1,4 +1,4 @@
-# backend/master_controller.py (Die finale, vollständige Version)
+# backend/master_controller.py (Die finale, vollständige Champions-League-Version)
 import pandas as pd
 import numpy as np
 import joblib
@@ -17,7 +17,7 @@ import tensorflow as tf
 from keras.models import Sequential, load_model
 from keras.layers import Input, LSTM, Dense, Dropout
 
-# Datenbank-Anbindung & Cloud
+# Datenbank-Anbindung
 from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import insert
 from database import engine, predictions, daily_sentiment
@@ -32,25 +32,46 @@ from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 load_dotenv()
 TWELVEDATA_API_KEY = os.getenv("TWELVEDATA_API_KEY")
 FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY")
+
 SYMBOLS = ["BTC/USD", "XAU/USD"]
 MODELS_DIR = "models"
 INITIAL_CAPITAL = 100
 SEQUENCE_LENGTH = 60
+RISK_PER_TRADE = 0.02 # 2% des Kapitals pro Trade
+
+MINIMUM_TRADE_SIZES = {
+    "BTC/USD": 0.001,
+    "XAU/USD": 0.003
+}
 
 STRATEGIES = {
-    'daily_lstm': { 'features': ['close', 'SMA_50', 'RSI'], 'feature_func': lambda df: df.assign(SMA_50=ta.trend.sma_indicator(df['close'], window=50), RSI=ta.momentum.rsi(df['close'], window=14)) },
-    'genius_lstm': { 'features': ['close', 'RSI', 'MACD_diff', 'WilliamsR', 'ATR'], 'feature_func': lambda df: df.assign(RSI=ta.momentum.rsi(df['close'], window=14), MACD_diff=ta.trend.macd_diff(df['close'], window_slow=26, window_fast=12, window_sign=9), WilliamsR=ta.momentum.williams_r(df['high'], df['low'], df['close'], lbp=14), ATR=ta.volatility.average_true_range(df['high'], df['low'], df['close'], window=14)) }
+    'daily_lstm': {
+        'features': ['close', 'SMA_50', 'RSI', 'sentiment_score'],
+        'feature_func': lambda df: df.assign(
+            SMA_50=ta.trend.sma_indicator(df['close'], window=50),
+            RSI=ta.momentum.rsi(df['close'], window=14)
+        )
+    },
+    'genius_lstm': {
+        'features': ['close', 'RSI', 'MACD_diff', 'WilliamsR', 'ATR', 'sentiment_score'],
+        'feature_func': lambda df: df.assign(
+            RSI=ta.momentum.rsi(df['close'], window=14),
+            MACD_diff=ta.trend.macd_diff(df['close'], window_slow=26, window_fast=12, window_sign=9),
+            WilliamsR=ta.momentum.williams_r(df['high'], df['low'], df['close'], lbp=14),
+            ATR=ta.volatility.average_true_range(df['high'], df['low'], df['close'], window=14)
+        )
+    }
 }
 
 # ==============================================================================
 # 2. HILFSFUNKTIONEN
 # ==============================================================================
-def load_historical_data(symbol, conn):
-    query = text("SELECT * FROM historical_data_daily WHERE symbol = :symbol ORDER BY timestamp ASC")
-    return pd.read_sql_query(query, conn, params={'symbol': symbol})
-
 def load_data_with_sentiment(symbol, conn):
-    query = text("SELECT h.timestamp, h.open, h.high, h.low, h.close, h.volume, COALESCE(s.sentiment_score, 0.0) as sentiment_score FROM historical_data_daily h LEFT JOIN daily_sentiment s ON h.symbol = s.asset AND DATE(h.timestamp) = s.date WHERE h.symbol = :symbol ORDER BY h.timestamp ASC")
+    query = text("""
+        SELECT h.timestamp, h.open, h.high, h.low, h.close, h.volume, COALESCE(s.sentiment_score, 0.0) as sentiment_score
+        FROM historical_data_daily h LEFT JOIN daily_sentiment s ON h.symbol = s.asset AND DATE(h.timestamp) = s.date
+        WHERE h.symbol = :symbol ORDER BY h.timestamp ASC
+    """)
     df = pd.read_sql_query(query, conn, params={'symbol': symbol})
     df['sentiment_score'] = df['sentiment_score'].ffill().bfill().fillna(0.0)
     return df
@@ -142,42 +163,35 @@ def train_all_models():
 
 def backtest_all_models():
     print("=== STARTE BACKTESTING ===")
-    all_results = {'daily_lstm': [], 'genius_lstm': []}
-    equity_curves = {'daily_lstm': {}, 'genius_lstm': {}}
+    all_results = {}
+    equity_curves = {}
     with engine.connect() as conn:
         for symbol in SYMBOLS:
             print(f"\nLade Daten für Backtest von {symbol}...")
-            df_full = load_historical_data(symbol, conn)
+            df_full = load_data_with_sentiment(symbol, conn)
             if df_full.empty: continue
             for name, config in STRATEGIES.items():
+                if name not in all_results: all_results[name] = []
+                if name not in equity_curves: equity_curves[name] = {}
                 print(f"-- Starte Backtest für {name.upper()}...")
                 try:
                     base_path = f"{MODELS_DIR}/model_{name}_{symbol.replace('/', '')}"
-                    if not os.path.exists(f"{base_path}.keras"):
-                        print(f"Modell für {name} nicht gefunden. Bitte zuerst trainieren.")
-                        continue
-                        
+                    if not os.path.exists(f"{base_path}.keras"): continue
                     model = load_model(f"{base_path}.keras")
                     scaler = joblib.load(f"{base_path}_scaler.pkl")
                     df_features = config['feature_func'](df_full.copy()).dropna()
-                    
                     all_scaled_data = scaler.transform(df_features[config['features']])
                     X_backtest = []
                     for i in range(SEQUENCE_LENGTH, len(all_scaled_data)):
                         X_backtest.append(all_scaled_data[i-SEQUENCE_LENGTH:i])
-                    
                     if not X_backtest: continue
-                    
                     predicted_classes = np.argmax(model.predict(np.array(X_backtest)), axis=1)
                     df_trade = df_features.iloc[SEQUENCE_LENGTH:].copy()
                     df_trade['signal'] = predicted_classes
-                    
                     df_trade['daily_return'] = df_trade['close'].pct_change()
                     df_trade['strategy_return'] = np.where(df_trade['signal'].shift(1) == 1, df_trade['daily_return'], np.where(df_trade['signal'].shift(1) == 0, -df_trade['daily_return'], 0))
-                    
                     df_trade['equity_curve'] = INITIAL_CAPITAL * (1 + df_trade['strategy_return']).cumprod()
                     equity_curves[name][symbol] = {'dates': df_trade['timestamp'].dt.strftime('%Y-%m-%d').tolist(),'values': df_trade['equity_curve'].fillna(INITIAL_CAPITAL).round(2).tolist()}
-                    
                     total_return_pct = ((df_trade['equity_curve'].iloc[-1] - INITIAL_CAPITAL) / INITIAL_CAPITAL) * 100
                     trades = df_trade[df_trade['signal'] != 2]
                     win_rate = (len(trades[trades['strategy_return'] > 0]) / len(trades) * 100) if not trades.empty else 0
@@ -189,20 +203,17 @@ def backtest_all_models():
     print("\n✅ Backtest abgeschlossen.")
 
 def predict_all_signals():
-    print("=== STARTE SIGNAL-GENERATOR (AUF RENDER) ===")
+    print("=== STARTE SIGNAL-GENERATOR (MIT BROKER-REGELN) ===")
     with engine.connect() as conn:
         for symbol in SYMBOLS:
             print(f"\n--- Verarbeite {symbol} ---")
             try:
-                df_live = load_historical_data(symbol, conn).tail(120).copy()
+                df_live = load_data_with_sentiment(symbol, conn).tail(120).copy()
                 if len(df_live) < SEQUENCE_LENGTH: continue
                 for name, config in STRATEGIES.items():
                     print(f"-> Generiere '{name}' Signal...")
                     base_path = f"{MODELS_DIR}/model_{name}_{symbol.replace('/', '')}"
-                    if not os.path.exists(f"{base_path}.keras"):
-                        print(f"Modell für {name} nicht gefunden. Bitte zuerst auf dem PC trainieren und hochladen.")
-                        continue
-                        
+                    if not os.path.exists(f"{base_path}.keras"): continue
                     model = load_model(f"{base_path}.keras")
                     scaler = joblib.load(f"{base_path}_scaler.pkl")
                     df_features = config['feature_func'](df_live).dropna()
@@ -214,14 +225,23 @@ def predict_all_signals():
                     confidence = round(np.max(prediction_proba) * 100, 2)
                     signal = {0: "Verkaufen", 1: "Kaufen", 2: "Halten"}.get(np.argmax(prediction_proba))
                     price = df_features.iloc[-1]['close']
-                    update_data = {'symbol': symbol, 'strategy': name, 'signal': signal, 'confidence': confidence, 'entry_price': price, 'last_updated': datetime.now(timezone.utc)}
+                    atr_value = df_features.iloc[-1].get('ATR', price * 0.02)
+                    take_profit, stop_loss, position_size = None, None, None
+                    if signal in ["Kaufen", "Verkaufen"]:
+                        stop_loss_distance = 1.5 * atr_value
+                        risk_amount = INITIAL_CAPITAL * RISK_PER_TRADE
+                        calculated_size = risk_amount / stop_loss_distance if stop_loss_distance > 0 else 0
+                        min_size = MINIMUM_TRADE_SIZES.get(symbol, 0.001)
+                        position_size = max(calculated_size, min_size)
+                        if signal == "Kaufen": take_profit, stop_loss = price + (2.5 * atr_value), price - stop_loss_distance
+                        elif signal == "Verkaufen": take_profit, stop_loss = price - (2.5 * atr_value), price + stop_loss_distance
+                    update_data = {'symbol': symbol, 'strategy': name, 'signal': signal, 'confidence': confidence, 'entry_price': price, 'take_profit': take_profit, 'stop_loss': stop_loss, 'position_size': position_size, 'last_updated': datetime.now(timezone.utc)}
                     stmt = insert(predictions).values(update_data)
                     stmt = stmt.on_conflict_do_update(index_elements=['symbol', 'strategy'], set_=update_data)
                     conn.execute(stmt)
                     conn.commit()
-                    print(f"✅ Signal für '{name}' gespeichert: {signal} ({confidence}%)")
-            except Exception as e:
-                print(f"Ein FEHLER bei {symbol}: {e}")
+                    print(f"✅ Signal gespeichert: {signal} | Empf. Größe: {position_size:.4f} Einheiten")
+            except Exception as e: print(f"Ein FEHLER bei {symbol}: {e}")
     print("\n=== SIGNAL-GENERATOR ABGESCHLOSSEN ===")
 
 # ==============================================================================
@@ -229,7 +249,6 @@ def predict_all_signals():
 # ==============================================================================
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Master-Controller für die Finanz-App.")
-    # HIER IST DIE FINALE KORREKTUR
     parser.add_argument("mode", choices=['fetch-data', 'fetch-sentiment', 'train', 'backtest', 'predict'], help="Der auszuführende Modus.")
     args = parser.parse_args()
 
@@ -240,7 +259,6 @@ if __name__ == "__main__":
     elif args.mode == 'train':
         train_all_models()
     elif args.mode == 'backtest':
-        # backtest_all_models() # Funktion muss hier noch eingefügt werden
-        print("Backtest-Funktion noch nicht vollständig integriert.")
+        backtest_all_models()
     elif args.mode == 'predict':
         predict_all_signals()

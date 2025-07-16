@@ -36,10 +36,11 @@ predictions = Table('predictions', meta,
     Column('symbol', String(20), nullable=False),
     Column('strategy', String(50), nullable=False),
     Column('signal', String(10), nullable=False),
-    Column('confidence', Float, nullable=True), # NEUE SPALTE für die Konfidenz
+    Column('confidence', Float, nullable=True),
     Column('entry_price', Float, nullable=True),
     Column('take_profit', Float, nullable=True),
     Column('stop_loss', Float, nullable=True),
+    Column('position_size', Float, nullable=True), # NEUE SPALTE
     Column('last_updated', DateTime, default=datetime.utcnow),
     UniqueConstraint('symbol', 'strategy', name='uq_symbol_strategy')
 )
