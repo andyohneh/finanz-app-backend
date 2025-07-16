@@ -204,44 +204,71 @@ def backtest_all_models():
 
 def predict_all_signals():
     print("=== STARTE SIGNAL-GENERATOR (MIT BROKER-REGELN) ===")
+    RISK_PER_TRADE = 0.02
+    HYPOTHETICAL_CAPITAL = 1000
+
     with engine.connect() as conn:
         for symbol in SYMBOLS:
             print(f"\n--- Verarbeite {symbol} ---")
             try:
                 df_live = load_data_with_sentiment(symbol, conn).tail(120).copy()
                 if len(df_live) < SEQUENCE_LENGTH: continue
+
                 for name, config in STRATEGIES.items():
                     print(f"-> Generiere '{name}' Signal...")
                     base_path = f"{MODELS_DIR}/model_{name}_{symbol.replace('/', '')}"
                     if not os.path.exists(f"{base_path}.keras"): continue
+                    
                     model = load_model(f"{base_path}.keras")
                     scaler = joblib.load(f"{base_path}_scaler.pkl")
+
                     df_features = config['feature_func'](df_live).dropna()
                     last_sequence = df_features[config['features']].tail(SEQUENCE_LENGTH)
                     if len(last_sequence) < SEQUENCE_LENGTH: continue
+                    
                     last_sequence_scaled = scaler.transform(last_sequence)
                     X_predict = np.array([last_sequence_scaled])
                     prediction_proba = model.predict(X_predict)[0]
                     confidence = round(np.max(prediction_proba) * 100, 2)
                     signal = {0: "Verkaufen", 1: "Kaufen", 2: "Halten"}.get(np.argmax(prediction_proba))
+                    
                     price = df_features.iloc[-1]['close']
                     atr_value = df_features.iloc[-1].get('ATR', price * 0.02)
+                    
                     take_profit, stop_loss, position_size = None, None, None
+                    
                     if signal in ["Kaufen", "Verkaufen"]:
                         stop_loss_distance = 1.5 * atr_value
-                        risk_amount = INITIAL_CAPITAL * RISK_PER_TRADE
+                        risk_amount = HYPOTHETICAL_CAPITAL * RISK_PER_TRADE
                         calculated_size = risk_amount / stop_loss_distance if stop_loss_distance > 0 else 0
                         min_size = MINIMUM_TRADE_SIZES.get(symbol, 0.001)
                         position_size = max(calculated_size, min_size)
-                        if signal == "Kaufen": take_profit, stop_loss = price + (2.5 * atr_value), price - stop_loss_distance
-                        elif signal == "Verkaufen": take_profit, stop_loss = price - (2.5 * atr_value), price + stop_loss_distance
-                    update_data = {'symbol': symbol, 'strategy': name, 'signal': signal, 'confidence': confidence, 'entry_price': price, 'take_profit': take_profit, 'stop_loss': stop_loss, 'position_size': position_size, 'last_updated': datetime.now(timezone.utc)}
+
+                        if signal == "Kaufen":
+                            take_profit = price + (2.5 * atr_value)
+                            stop_loss = price - stop_loss_distance
+                        elif signal == "Verkaufen":
+                            take_profit = price - (2.5 * atr_value)
+                            stop_loss = price + stop_loss_distance
+
+                    update_data = {
+                        'symbol': symbol, 'strategy': name, 'signal': signal, 
+                        'confidence': confidence, 'entry_price': price, 
+                        'take_profit': take_profit, 'stop_loss': stop_loss,
+                        'position_size': position_size,
+                        'last_updated': datetime.now(timezone.utc)
+                    }
+                    
                     stmt = insert(predictions).values(update_data)
                     stmt = stmt.on_conflict_do_update(index_elements=['symbol', 'strategy'], set_=update_data)
                     conn.execute(stmt)
                     conn.commit()
-                    print(f"✅ Signal gespeichert: {signal} | Empf. Größe: {position_size:.4f} Einheiten")
-            except Exception as e: print(f"Ein FEHLER bei {symbol}: {e}")
+
+                    # HIER IST DIE FINALE KORREKTUR
+                    size_string = f"{position_size:.4f} Einheiten" if position_size is not None else "Keine Aktion"
+                    print(f"✅ Signal gespeichert: {signal} | Empf. Größe: {size_string}")
+            except Exception as e:
+                print(f"Ein FEHLER bei {symbol}: {e}")
     print("\n=== SIGNAL-GENERATOR ABGESCHLOSSEN ===")
 
 # ==============================================================================
