@@ -8,6 +8,14 @@
           <h2>Daily LSTM Strategie</h2>
           <div id="equity-chart-daily_lstm" class="equity-chart"></div>
           <table class="results-table">
+            <thead>
+              <tr>
+                <th>Symbol</th>
+                <th>Gesamtrendite (%)</th>
+                <th>Gewinnrate (%)</th>
+                <th>Anzahl Trades</th>
+              </tr>
+            </thead>
             <tbody>
               {% for result in results.daily_lstm %}
               <tr>
@@ -29,6 +37,14 @@
           <h2>Genius LSTM Strategie</h2>
           <div id="equity-chart-genius_lstm" class="equity-chart"></div>
           <table class="results-table">
+            <thead>
+              <tr>
+                <th>Symbol</th>
+                <th>Gesamtrendite (%)</th>
+                <th>Gewinnrate (%)</th>
+                <th>Anzahl Trades</th>
+              </tr>
+            </thead>
             <tbody>
               {% for result in results.genius_lstm %}
               <tr>

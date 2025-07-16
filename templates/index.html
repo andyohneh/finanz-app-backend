@@ -43,6 +43,14 @@
       </header>
 
       <main>
+        <div class="strategy-tabs">
+          <button class="strategy-tab active" data-strategy="daily_lstm">
+            Daily LSTM
+          </button>
+          <button class="strategy-tab" data-strategy="genius_lstm">
+            Genius LSTM
+          </button>
+        </div>
         <div class="signal-cards-container"></div>
       </main>
 
@@ -68,12 +76,14 @@
         const closeModal = document.querySelector(".close-button");
         const chartContainer = document.getElementById("chart-container");
         const chartAssetTitle = document.getElementById("chart-asset-title");
-        let chart = null;
+        const strategyTabs = document.querySelectorAll(".strategy-tab");
 
-        function fetchSignalData() {
+        let chart = null;
+        let currentStrategy = "daily_lstm"; // WICHTIG: Start-Strategie angepasst
+
+        function fetchSignalData(strategy) {
           signalCardsContainer.innerHTML = '<div class="loader"></div>';
-          // Wir rufen jetzt immer die Signale unserer Super-Strategie ab
-          fetch("/api/assets?strategy=genius_lstm")
+          fetch(`/api/assets?strategy=${strategy}`)
             .then((response) => {
               if (!response.ok)
                 throw new Error(`HTTP-Fehler! Status: ${response.status}`);
@@ -81,9 +91,9 @@
             })
             .then((data) => {
               signalCardsContainer.innerHTML = "";
-              if (data.length === 0) {
+              if (!data || data.length === 0) {
                 signalCardsContainer.innerHTML =
-                  '<p class="error-msg">Keine Signale verfügbar.</p>';
+                  '<p class="error-msg">Keine Signale für diese Strategie verfügbar. (Training oder Predict ausführen)</p>';
                 return;
               }
               data.forEach((asset) => {
@@ -93,7 +103,6 @@
                             <div class="card-header"><span class="asset-name">${asset.asset}</span><span class="material-icons icon">${asset.icon}</span></div>
                             <div class="card-body">
                                 <div class="trade-info"><strong>Signal:</strong> ${asset.signal}</div>
-                                <div class="trade-info"><strong>Konfidenz:</strong> ${asset.confidence}%</div>
                                 <div class="trade-info"><strong>Einstieg:</strong> ${asset.entry}</div>
                                 <div class="trade-info"><strong>Take Profit:</strong> ${asset.takeProfit}</div>
                                 <div class="trade-info"><strong>Stop Loss:</strong> ${asset.stopLoss}</div>
@@ -107,11 +116,23 @@
               });
             })
             .catch((error) => {
-              console.error("Fehler beim Laden der Signale:", error);
+              console.error(
+                `Fehler beim Laden der ${strategy}-Signale:`,
+                error
+              );
               signalCardsContainer.innerHTML =
                 '<p class="error-msg">Signale konnten nicht geladen werden.</p>';
             });
         }
+
+        strategyTabs.forEach((tab) => {
+          tab.addEventListener("click", () => {
+            strategyTabs.forEach((t) => t.classList.remove("active"));
+            tab.classList.add("active");
+            currentStrategy = tab.dataset.strategy;
+            fetchSignalData(currentStrategy);
+          });
+        });
 
         function openChartModal(symbol) {
           chartAssetTitle.textContent = `${symbol} Chart (Täglich)`;
@@ -152,6 +173,7 @@
               chart.render();
             })
             .catch((error) => {
+              console.error("Fehler beim Laden der Chart-Daten:", error);
               chartContainer.innerHTML =
                 '<p class="error-msg">Chart konnte nicht geladen werden.</p>';
             });
@@ -164,8 +186,8 @@
           if (event.target == modal) modal.style.display = "none";
         };
 
-        fetchSignalData();
-        setInterval(fetchSignalData, 60000);
+        // Lade die Signale für die Standard-Strategie, sobald die Seite geladen ist
+        fetchSignalData(currentStrategy);
       });
     </script>
   </body>
