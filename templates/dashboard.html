@@ -1,8 +1,34 @@
 <!DOCTYPE html>
 <html lang="de">
-  <head> </head>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Diamond Sky • Analyse-Dashboard</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='css/style.css') }}"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+  </head>
   <body>
     <div class="container">
+      <header class="header">
+        <div class="logo">
+          <img
+            src="{{ url_for('static', filename='logo.png') }}"
+            alt="Diamond Sky Logo"
+          />
+          <h1>Analyse-Dashboard</h1>
+        </div>
+        <div class="header-actions">
+          <a href="/" class="dashboard-link">Live-Signale</a>
+        </div>
+      </header>
+
       <main>
         <div class="table-container">
           <h2>Daily LSTM Strategie</h2>
@@ -85,13 +111,18 @@
             },
             yaxis: {
               labels: {
-                formatter: (value) => `€${(value || 0).toFixed(0)}`,
+                formatter: (value) => {
+                  return `€${value.toFixed(0)}`;
+                },
                 style: { colors: "#8e8e8e" },
               },
             },
             tooltip: { theme: "dark", x: { format: "dd MMM yyyy" } },
             grid: { borderColor: "#535A6C" },
-            legend: { position: "top", horizontalAlign: "center" },
+            legend: {
+              position: "top",
+              horizontalAlign: "center",
+            },
           };
           const chart = new ApexCharts(
             document.querySelector(elementId),
@@ -101,44 +132,26 @@
         }
 
         fetch("/api/equity-curves")
-          .then((response) =>
-            response.ok
-              ? response.json()
-              : Promise.reject("Equity-Daten konnten nicht geladen werden.")
-          )
+          .then((response) => response.json())
           .then((data) => {
-            if (!data) return;
             for (const strategy in data) {
-              // SICHERHEITS-CHECK: Nur fortfahren, wenn die Strategie-Daten existieren
-              if (data[strategy] && Object.keys(data[strategy]).length > 0) {
-                const elementId = `#equity-chart-${strategy}`;
-                const series = [];
-                for (const symbol in data[strategy]) {
-                  const symbolData = data[strategy][symbol];
-                  // SICHERHEITS-CHECK: Nur hinzufügen, wenn die Daten Arrays sind
-                  if (
-                    symbolData &&
-                    Array.isArray(symbolData.dates) &&
-                    Array.isArray(symbolData.values)
-                  ) {
-                    series.push({
-                      name: symbol,
-                      data: symbolData.dates.map((date, index) => [
-                        new Date(date).getTime(),
-                        symbolData.values[index],
-                      ]),
-                    });
-                  }
-                }
-                if (document.querySelector(elementId) && series.length > 0) {
-                  createEquityChart(elementId, series);
-                }
+              const elementId = `#equity-chart-${strategy}`;
+              const series = [];
+              for (const symbol in data[strategy]) {
+                series.push({
+                  name: symbol,
+                  data: data[strategy][symbol].dates.map((date, index) => [
+                    new Date(date).getTime(),
+                    data[strategy][symbol].values[index],
+                  ]),
+                });
+              }
+              if (document.querySelector(elementId) && series.length > 0) {
+                createEquityChart(elementId, series);
               }
             }
           })
-          .catch((error) =>
-            console.error("Fehler beim Erstellen der Equity-Charts:", error)
-          );
+          .catch((error) => console.error("Fehler:", error));
       });
     </script>
   </body>
