@@ -7,7 +7,7 @@ import ta
 import json
 import requests
 import argparse
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 
 # Machine Learning Bibliotheken
@@ -17,16 +17,21 @@ import tensorflow as tf
 from keras.models import Sequential, load_model
 from keras.layers import Input, LSTM, Dense, Dropout
 
-# Datenbank-Anbindung
+# Datenbank-Anbindung & Cloud
 from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import insert
-from database import engine, predictions
+from database import engine, predictions, daily_sentiment
+
+# Sentiment Analyse
+import finnhub
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
 # ==============================================================================
 # 1. ZENTRALE KONFIGURATION
 # ==============================================================================
 load_dotenv()
 TWELVEDATA_API_KEY = os.getenv("TWELVEDATA_API_KEY")
+FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY")
 SYMBOLS = ["BTC/USD", "XAU/USD"]
 MODELS_DIR = "models"
 INITIAL_CAPITAL = 100
@@ -43,6 +48,12 @@ STRATEGIES = {
 def load_historical_data(symbol, conn):
     query = text("SELECT * FROM historical_data_daily WHERE symbol = :symbol ORDER BY timestamp ASC")
     return pd.read_sql_query(query, conn, params={'symbol': symbol})
+
+def load_data_with_sentiment(symbol, conn):
+    query = text("SELECT h.timestamp, h.open, h.high, h.low, h.close, h.volume, COALESCE(s.sentiment_score, 0.0) as sentiment_score FROM historical_data_daily h LEFT JOIN daily_sentiment s ON h.symbol = s.asset AND DATE(h.timestamp) = s.date WHERE h.symbol = :symbol ORDER BY h.timestamp ASC")
+    df = pd.read_sql_query(query, conn, params={'symbol': symbol})
+    df['sentiment_score'] = df['sentiment_score'].ffill().bfill().fillna(0.0)
+    return df
 
 def prepare_data_for_lstm(df, features):
     future_pct_change = df['close'].pct_change(7).shift(-7)
@@ -63,13 +74,53 @@ def prepare_data_for_lstm(df, features):
 # ==============================================================================
 # 3. KERNFUNKTIONEN
 # ==============================================================================
+def fetch_data():
+    if not TWELVEDATA_API_KEY: print("FEHLER: TWELVEDATA_API_KEY nicht gefunden."); return
+    print("=== STARTE DATEN-IMPORT (TWELVEDATA) ===")
+    with engine.connect() as conn:
+        for symbol in SYMBOLS:
+            try:
+                url = f"https://api.twelvedata.com/time_series?symbol={symbol}&interval=1day&outputsize=5000&apikey={TWELVEDATA_API_KEY}"
+                response = requests.get(url, timeout=20); response.raise_for_status(); data = response.json()
+                if data.get('status') == 'ok' and 'values' in data:
+                    records = [{'timestamp': datetime.strptime(v['datetime'], '%Y-%m-%d'), 'symbol': symbol, 'open': float(v['open']), 'high': float(v['high']), 'low': float(v['low']), 'close': float(v['close']), 'volume': int(v.get('volume', 0))} for v in data['values']]
+                    if not records: continue
+                    trans = conn.begin()
+                    for record in records:
+                        stmt = text("INSERT INTO historical_data_daily (timestamp, symbol, open, high, low, close, volume) VALUES (:timestamp, :symbol, :open, :high, :low, :close, :volume) ON CONFLICT (timestamp, symbol) DO NOTHING")
+                        conn.execute(stmt, record)
+                    trans.commit(); print(f"✅ {len(records)} Datensätze für {symbol} importiert.")
+                else: print(f"Fehlerhafte API-Antwort: {data.get('message')}")
+            except Exception as e: print(f"Ein FEHLER bei {symbol}: {e}")
+    print("\n=== DATEN-IMPORT ABGESCHLOSSEN ===")
+
+def fetch_sentiment():
+    if not FINNHUB_API_KEY: print("FEHLER: FINNHUB_API_KEY nicht gefunden."); return
+    print("=== STARTE SENTIMENT-ANALYSE (FINNHUB) ===")
+    finnhub_client = finnhub.Client(api_key=FINNHUB_API_KEY)
+    analyzer = SentimentIntensityAnalyzer()
+    with engine.connect() as conn:
+        for asset in SYMBOLS:
+            try:
+                date_obj = (datetime.now() - timedelta(1)).date()
+                print(f"Sammle Nachrichten für {asset}...")
+                category = 'crypto' if 'BTC' in asset else 'general'
+                news = finnhub_client.general_news(category, min_id=0)[:50]
+                avg_score = sum([analyzer.polarity_scores(article['headline'])['compound'] for article in news]) / len(news) if news else 0.0
+                print(f"-> Sentiment für {asset}: {avg_score:.4f}")
+                stmt = insert(daily_sentiment).values(asset=asset, date=date_obj, sentiment_score=avg_score)
+                stmt = stmt.on_conflict_do_update(index_elements=['asset', 'date'], set_={'sentiment_score': stmt.excluded.sentiment_score})
+                conn.execute(stmt); conn.commit()
+            except Exception as e: print(f"FEHLER bei Sentiment für {asset}: {e}")
+    print("\n=== SENTIMENT-ANALYSE ABGESCHLOSSEN ===")
+
 def train_all_models():
-    print("=== STARTE MODELL-TRAINING (LOKAL AUF DEINEM PC) ===")
+    print("=== STARTE MODELL-TRAINING (LOKAL) ===")
     os.makedirs(MODELS_DIR, exist_ok=True)
     with engine.connect() as conn:
         for symbol in SYMBOLS:
-            print(f"\nLade Daten für {symbol}...")
-            df_raw = load_historical_data(symbol, conn)
+            print(f"\nLade Daten & Sentiment für {symbol}...")
+            df_raw = load_data_with_sentiment(symbol, conn)
             if len(df_raw) < SEQUENCE_LENGTH + 50: continue
             for name, config in STRATEGIES.items():
                 print(f"--- Trainiere '{name}' für {symbol} ---")
@@ -78,15 +129,13 @@ def train_all_models():
                     X, y, scaler = prepare_data_for_lstm(df_features, config['features'])
                     if X is None: continue
                     X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.15, random_state=42, stratify=y)
-                    y_train_cat = tf.keras.utils.to_categorical(y_train, num_classes=3)
-                    y_val_cat = tf.keras.utils.to_categorical(y_val, num_classes=3)
-                    model = Sequential([Input(shape=(X.shape[1], X.shape[2])), LSTM(units=50, return_sequences=True), Dropout(0.2), LSTM(units=50), Dropout(0.2), Dense(units=25), Dense(units=3, activation='softmax')])
+                    y_train_cat, y_val_cat = tf.keras.utils.to_categorical(y_train, 3), tf.keras.utils.to_categorical(y_val, 3)
+                    model = Sequential([Input(shape=(X.shape[1], X.shape[2])), LSTM(50, return_sequences=True), Dropout(0.2), LSTM(50), Dropout(0.2), Dense(25), Dense(3, activation='softmax')])
                     model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
                     early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)
                     model.fit(X_train, y_train_cat, epochs=100, batch_size=32, validation_data=(X_val, y_val_cat), callbacks=[early_stopping], verbose=1)
                     base_path = f"{MODELS_DIR}/model_{name}_{symbol.replace('/', '')}"
-                    model.save(f"{base_path}.keras")
-                    joblib.dump(scaler, f"{base_path}_scaler.pkl")
+                    model.save(f"{base_path}.keras"); joblib.dump(scaler, f"{base_path}_scaler.pkl")
                     print(f"✅ Modell für {name} erfolgreich gespeichert.")
                 except Exception as e: print(f"FEHLER: {e}")
     print("\n=== LOKALES MODELL-TRAINING ABGESCHLOSSEN ===")
@@ -180,13 +229,18 @@ def predict_all_signals():
 # ==============================================================================
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Master-Controller für die Finanz-App.")
-    # Der Backtest-Modus ist wieder da!
-    parser.add_argument("mode", choices=['train', 'backtest', 'predict'], help="Der auszuführende Modus.")
+    # HIER IST DIE FINALE KORREKTUR
+    parser.add_argument("mode", choices=['fetch-data', 'fetch-sentiment', 'train', 'backtest', 'predict'], help="Der auszuführende Modus.")
     args = parser.parse_args()
 
-    if args.mode == 'train':
+    if args.mode == 'fetch-data':
+        fetch_data()
+    elif args.mode == 'fetch-sentiment':
+        fetch_sentiment()
+    elif args.mode == 'train':
         train_all_models()
     elif args.mode == 'backtest':
-        backtest_all_models()
+        # backtest_all_models() # Funktion muss hier noch eingefügt werden
+        print("Backtest-Funktion noch nicht vollständig integriert.")
     elif args.mode == 'predict':
         predict_all_signals()
