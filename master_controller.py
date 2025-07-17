@@ -1,4 +1,4 @@
-# backend/master_controller.py (Die finale, vollständige Champions-League-Version)
+# backend/master_controller.py (Finale Version mit Hyper-Antrieb)
 import pandas as pd
 import numpy as np
 import joblib
@@ -16,6 +16,7 @@ from sklearn.preprocessing import MinMaxScaler
 import tensorflow as tf
 from keras.models import Sequential, load_model
 from keras.layers import Input, LSTM, Dense, Dropout
+import keras_tuner as kt # DAS NEUE WERKZEUG
 
 # Datenbank-Anbindung
 from sqlalchemy import text
@@ -134,6 +135,82 @@ def fetch_sentiment():
                 conn.execute(stmt); conn.commit()
             except Exception as e: print(f"FEHLER bei Sentiment für {asset}: {e}")
     print("\n=== SENTIMENT-ANALYSE ABGESCHLOSSEN ===")
+    
+    # NEUE FUNKTION: Der Bauplan für die KI, den der Tuner verwendet
+def build_model(hp):
+    """Baut ein LSTM-Modell mit variablen Hyperparametern."""
+    model = Sequential()
+    model.add(Input(shape=(SEQUENCE_LENGTH, len(STRATEGIES['genius_lstm']['features']))))
+    
+    # HIER PASSIERT DIE MAGIE: Wir definieren Test-Bereiche anstatt fester Werte
+    model.add(LSTM(
+        units=hp.Int('units_1', min_value=40, max_value=120, step=10),
+        return_sequences=True
+    ))
+    model.add(Dropout(hp.Float('dropout_1', min_value=0.1, max_value=0.5, step=0.1)))
+    
+    model.add(LSTM(
+        units=hp.Int('units_2', min_value=40, max_value=120, step=10),
+        return_sequences=False
+    ))
+    model.add(Dropout(hp.Float('dropout_2', min_value=0.1, max_value=0.5, step=0.1)))
+    
+    model.add(Dense(units=hp.Int('dense_units', min_value=20, max_value=60, step=5)))
+    model.add(Dense(3, activation='softmax'))
+    
+    model.compile(
+        optimizer=tf.keras.optimizers.Adam(hp.Choice('learning_rate', values=[1e-2, 1e-3, 1e-4])),
+        loss='categorical_crossentropy',
+        metrics=['accuracy']
+    )
+    return model
+
+def tune_and_train_best_model():
+    print("=== STARTE HYPERPARAMETER-TUNING & TRAINING ===")
+    os.makedirs(MODELS_DIR, exist_ok=True)
+    with engine.connect() as conn:
+        for symbol in SYMBOLS:
+            print(f"\nLade Daten & Sentiment für {symbol}...")
+            df_raw = load_data_with_sentiment(symbol, conn)
+            if len(df_raw) < 300: continue # Brauchen mehr Daten fürs Tuning
+
+            for name, config in STRATEGIES.items():
+                print(f"--- Tune & Train '{name}' für {symbol} ---")
+                try:
+                    df_features = config['feature_func'](df_raw.copy())
+                    X, y, scaler = prepare_data_for_lstm(df_features, config['features'])
+                    if X is None: continue
+
+                    X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42)
+                    y_train_cat, y_val_cat = tf.keras.utils.to_categorical(y_train, 3), tf.keras.utils.to_categorical(y_val, 3)
+
+                    # Der Robo-Mechaniker (Tuner)
+                    tuner = kt.Hyperband(
+                        build_model,
+                        objective='val_accuracy',
+                        max_epochs=50,
+                        factor=3,
+                        directory='tuning_dir',
+                        project_name=f'{name}_{symbol.replace("/", "")}'
+                    )
+                    
+                    stop_early = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=5)
+                    print("Starte die Suche nach der besten KI-Architektur...")
+                    tuner.search(X_train, y_train_cat, epochs=50, validation_data=(X_val, y_val_cat), callbacks=[stop_early], verbose=1)
+
+                    # Hole das beste Modell und speichere es
+                    best_hps = tuner.get_best_hyperparameters(num_trials=1)[0]
+                    print(f"Beste Konfiguration gefunden: Units1={best_hps.get('units_1')}, Units2={best_hps.get('units_2')}, LR={best_hps.get('learning_rate')}")
+                    
+                    model = tuner.get_best_models(num_models=1)[0]
+                    base_path = f"{MODELS_DIR}/model_{name}_{symbol.replace('/', '')}"
+                    model.save(f"{base_path}.keras")
+                    joblib.dump(scaler, f"{base_path}_scaler.pkl")
+                    print(f"✅ Bestes Modell für {name} erfolgreich trainiert und gespeichert.")
+
+                except Exception as e:
+                    print(f"FEHLER beim Tuning: {e}")
+    print("\n=== HYPER-ANTRIEB ABGESCHLOSSEN ===")
 
 def train_all_models():
     print("=== STARTE MODELL-TRAINING (LOKAL) ===")
@@ -276,15 +353,16 @@ def predict_all_signals():
 # ==============================================================================
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Master-Controller für die Finanz-App.")
-    parser.add_argument("mode", choices=['fetch-data', 'fetch-sentiment', 'train', 'backtest', 'predict'], help="Der auszuführende Modus.")
+    # Der neue 'tune'-Modus ist da!
+    parser.add_argument("mode", choices=['fetch-data', 'fetch-sentiment', 'tune', 'backtest', 'predict'], help="Der auszuführende Modus.")
     args = parser.parse_args()
 
     if args.mode == 'fetch-data':
         fetch_data()
     elif args.mode == 'fetch-sentiment':
         fetch_sentiment()
-    elif args.mode == 'train':
-        train_all_models()
+    elif args.mode == 'tune':
+        tune_and_train_best_model()
     elif args.mode == 'backtest':
         backtest_all_models()
     elif args.mode == 'predict':
