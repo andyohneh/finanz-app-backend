@@ -1,4 +1,4 @@
-/* static/css/style.css (erweiterte Version) */
+/* static/css/style.css (Finale Version mit Animationen) */
 
 /* Grundlegende Stile und Variablen */
 :root {
@@ -22,6 +22,7 @@ body {
     color: var(--text-color);
     margin: 0;
     padding: 20px;
+    overflow-x: hidden; /* Verhindert horizontales Scrollen durch Animationen */
 }
 
 .container {
@@ -38,30 +39,16 @@ body {
     padding: 15px 0;
     border-bottom: 1px solid var(--border-color);
     margin-bottom: 30px;
+    /* NEU: Animation für den Header */
+    animation: fadeInDown 0.6s ease-out;
 }
 
-.logo {
-    display: flex;
-    align-items: center;
-}
+.logo { display: flex; align-items: center; }
+.logo img { height: 40px; margin-right: 15px; }
+.logo h1 { font-size: 1.8em; font-weight: 500; margin: 0; }
+.header-actions { display: flex; gap: 15px; }
 
-.logo img {
-    height: 40px;
-    margin-right: 15px;
-}
-
-.logo h1 {
-    font-size: 1.8em;
-    font-weight: 500;
-    margin: 0;
-}
-
-.header-actions {
-    display: flex;
-    gap: 15px;
-}
-
-.push-button, .dashboard-link {
+.dashboard-link {
     background-color: var(--accent-color);
     color: white;
     border: none;
@@ -70,195 +57,15 @@ body {
     cursor: pointer;
     font-size: 1em;
     text-decoration: none;
-    transition: background-color 0.3s;
+    transition: background-color 0.3s, transform 0.2s;
 }
 
-.push-button:hover, .dashboard-link:hover {
+.dashboard-link:hover {
     background-color: #0056b3;
+    transform: scale(1.05);
 }
 
-/* Signal-Karten */
-.signal-cards-container {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 20px;
-}
-
-.signal-card {
-    background-color: var(--card-background);
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    padding: 20px;
-    transition: transform 0.3s, box-shadow 0.3s;
-    cursor: pointer;
-}
-
-.signal-card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
-}
-
-.signal-card.green { border-left: 5px solid var(--green-color); box-shadow: 0 0 15px var(--green-glow); }
-.signal-card.red { border-left: 5px solid var(--red-color); box-shadow: 0 0 15px var(--red-glow); }
-.signal-card.grey { border-left: 5px solid var(--grey-color); }
-
-.card-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 15px;
-}
-
-.asset-name {
-    font-size: 1.5em;
-    font-weight: 500;
-}
-
-.icon {
-    font-size: 2em;
-}
-.signal-card.green .icon { color: var(--green-color); }
-.signal-card.red .icon { color: var(--red-color); }
-.signal-card.grey .icon { color: var(--grey-color); }
-
-
-.card-body .trade-info {
-    margin-bottom: 8px;
-    font-size: 1.1em;
-}
-
-.card-body .trade-info strong {
-    color: var(--text-secondary-color);
-    margin-right: 10px;
-}
-
-.card-footer {
-    margin-top: 15px;
-    font-size: 0.8em;
-    color: var(--text-secondary-color);
-    text-align: right;
-}
-
-/* Chart Modal */
-.modal {
-    display: none;
-    position: fixed;
-    z-index: 1000;
-    left: 0;
-    top: 0;
-    width: 100%;
-    height: 100%;
-    overflow: auto;
-    background-color: rgba(0, 0, 0, 0.7);
-}
-
-.modal-content {
-    background-color: #2c2c2c;
-    margin: 5% auto;
-    padding: 20px;
-    border: 1px solid var(--border-color);
-    width: 80%;
-    max-width: 900px;
-    border-radius: 8px;
-    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5);
-}
-
-.modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    border-bottom: 1px solid var(--border-color);
-    padding-bottom: 10px;
-    margin-bottom: 20px;
-}
-
-.close-button {
-    color: var(--text-secondary-color);
-    font-size: 28px;
-    font-weight: bold;
-    cursor: pointer;
-}
-
-.close-button:hover, .close-button:focus {
-    color: white;
-    text-decoration: none;
-}
-
-/* Lade-Spinner */
-.loader {
-    border: 5px solid #f3f3f3;
-    border-top: 5px solid var(--accent-color);
-    border-radius: 50%;
-    width: 50px;
-    height: 50px;
-    animation: spin 1s linear infinite;
-    margin: 50px auto;
-}
-
-@keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-}
-
-.error-msg {
-    color: var(--red-color);
-    text-align: center;
-    padding: 20px;
-}
-
-/* --- NEU: Dashboard & Tabellen --- */
-.table-container {
-    background-color: var(--card-background);
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    padding: 20px;
-    margin-bottom: 30px;
-}
-
-.table-container h2 {
-    margin-top: 0;
-    border-bottom: 1px solid var(--border-color);
-    padding-bottom: 10px;
-}
-
-.results-table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-top: 20px;
-}
-
-.results-table th, .results-table td {
-    padding: 12px 15px;
-    text-align: left;
-    border-bottom: 1px solid var(--border-color);
-}
-
-.results-table thead tr {
-    background-color: #2c2c2c;
-    color: var(--text-color);
-    font-weight: 500;
-}
-
-.results-table tbody tr:last-child th,
-.results-table tbody tr:last-child td {
-    border-bottom: none;
-}
-
-.results-table tbody tr:hover {
-    background-color: #2a2a2a;
-}
-
-.results-table td.positive {
-    color: var(--green-color);
-    font-weight: bold;
-}
-
-.results-table td.negative {
-    color: var(--red-color);
-    font-weight: bold;
-}
-
-/* --- NEU: Strategie-Tabs --- */
+/* Strategie-Tabs */
 .strategy-tabs {
     display: flex;
     justify-content: center;
@@ -267,6 +74,8 @@ body {
     border-radius: 8px;
     padding: 5px;
     border: 1px solid var(--border-color);
+    animation: fadeInUp 0.5s ease-out 0.2s forwards;
+    opacity: 0;
 }
 .strategy-tab {
     padding: 10px 25px;
@@ -287,4 +96,139 @@ body {
     background-color: var(--accent-color);
     color: white;
     box-shadow: 0 0 10px rgba(0, 123, 255, 0.5);
+}
+
+
+/* Signal-Karten */
+.signal-cards-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 20px;
+}
+
+.signal-card {
+    background-color: var(--card-background);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 20px;
+    transition: transform 0.3s, box-shadow 0.3s;
+    cursor: pointer;
+    /* NEU: Animation für die Karten */
+    opacity: 0;
+    transform: translateY(20px);
+    animation: fadeInUp 0.5s ease-out forwards;
+}
+
+/* Staffelung der Karten-Animation */
+.signal-card:nth-child(1) { animation-delay: 0.3s; }
+.signal-card:nth-child(2) { animation-delay: 0.4s; }
+
+
+.signal-card:hover {
+    transform: translateY(-5px) scale(1.02);
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+}
+
+.signal-card.green { border-left: 5px solid var(--green-color); box-shadow: 0 0 15px var(--green-glow); }
+.signal-card.red { border-left: 5px solid var(--red-color); box-shadow: 0 0 15px var(--red-glow); }
+.signal-card.grey { border-left: 5px solid var(--grey-color); }
+.card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+.asset-name { font-size: 1.5em; font-weight: 500; }
+.icon { font-size: 2em; }
+.signal-card.green .icon { color: var(--green-color); }
+.signal-card.red .icon { color: var(--red-color); }
+.signal-card.grey .icon { color: var(--grey-color); }
+.card-body .trade-info { margin-bottom: 8px; font-size: 1.1em; }
+.card-body .trade-info strong { color: var(--text-secondary-color); margin-right: 10px; }
+.card-footer { margin-top: 15px; font-size: 0.8em; color: var(--text-secondary-color); text-align: right; }
+
+/* Chart Modal */
+.modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0, 0, 0, 0.7); }
+.modal-content { background-color: #2c2c2c; margin: 5% auto; padding: 20px; border: 1px solid var(--border-color); width: 80%; max-width: 900px; border-radius: 8px; box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5); animation: zoomIn 0.3s ease-out; }
+.modal-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 10px; margin-bottom: 20px; }
+.close-button { color: var(--text-secondary-color); font-size: 28px; font-weight: bold; cursor: pointer; transition: color 0.3s; }
+.close-button:hover, .close-button:focus { color: white; }
+
+/* Lade-Spinner und Fehlermeldungen */
+.loader {
+    border: 5px solid #f3f3f3;
+    border-top: 5px solid var(--accent-color);
+    border-radius: 50%;
+    width: 50px;
+    height: 50px;
+    animation: spin 1s linear infinite;
+    margin: 50px auto;
+}
+.error-msg {
+    color: var(--red-color);
+    text-align: center;
+    padding: 20px;
+}
+
+/* Dashboard & Tabellen */
+.table-container {
+    background-color: var(--card-background);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 30px;
+    /* NEU: Animation für Dashboard-Sektionen */
+    opacity: 0;
+    transform: translateY(20px);
+    animation: fadeInUp 0.5s ease-out forwards;
+}
+.table-container:nth-of-type(1) { animation-delay: 0.2s; }
+.table-container:nth-of-type(2) { animation-delay: 0.3s; }
+.table-container:nth-of-type(3) { animation-delay: 0.4s; }
+
+
+.table-container h2 { margin-top: 0; border-bottom: 1px solid var(--border-color); padding-bottom: 10px; }
+.results-table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+.results-table th, .results-table td { padding: 12px 15px; text-align: left; border-bottom: 1px solid var(--border-color); }
+.results-table thead tr { background-color: #2c2c2c; color: var(--text-color); font-weight: 500; }
+.results-table tbody tr:last-child th,.results-table tbody tr:last-child td { border-bottom: none; }
+.results-table tbody tr:hover { background-color: #2a2a2a; }
+.results-table td.positive { color: var(--green-color); font-weight: bold; }
+.results-table td.negative { color: var(--red-color); font-weight: bold; }
+.equity-chart { margin-bottom: 20px; }
+
+
+/* --- NEUE SEKTION: ANIMATIONEN --- */
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+@keyframes fadeInUp {
+    from {
+        transform: translateY(20px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+@keyframes fadeInDown {
+    from {
+        transform: translateY(-20px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+@keyframes zoomIn {
+    from {
+        transform: scale(0.9);
+        opacity: 0;
+    }
+    to {
+        transform: scale(1);
+        opacity: 1;
+    }
 }
