@@ -16,15 +16,15 @@
     "genius_lstm": [
         {
             "Symbol": "BTC/USD",
-            "Gesamtrendite_%": 963733238990.47,
-            "Gewinnrate_%": 54.77,
-            "Anzahl_Trades": 2664
+            "Gesamtrendite_%": 3758277.35,
+            "Gewinnrate_%": 52.95,
+            "Anzahl_Trades": 2629
         },
         {
             "Symbol": "XAU/USD",
-            "Gesamtrendite_%": 3955.81,
-            "Gewinnrate_%": 52.17,
-            "Anzahl_Trades": 759
+            "Gesamtrendite_%": 179.57,
+            "Gewinnrate_%": 52.05,
+            "Anzahl_Trades": 171
         }
     ]
 }
