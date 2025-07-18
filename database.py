@@ -27,6 +27,7 @@ historical_data_daily = Table('historical_data_daily', meta,
     Column('low', Float, nullable=False),
     Column('close', Float, nullable=False),
     Column('volume', Float, nullable=False),
+    Column('vix', Float, nullable=True), # NEUE SPALTE für den Angst-Index
     UniqueConstraint('timestamp', 'symbol', name='uq_timestamp_symbol_daily')
 )
 

@@ -1,4 +1,4 @@
-# backend/master_controller.py (Finale Version mit Hyper-Antrieb)
+# backend/master_controller.py (Die finale, vollständige und korrigierte Version)
 import pandas as pd
 import numpy as np
 import joblib
@@ -16,16 +16,17 @@ from sklearn.preprocessing import MinMaxScaler
 import tensorflow as tf
 from keras.models import Sequential, load_model
 from keras.layers import Input, LSTM, Dense, Dropout
-import keras_tuner as kt # DAS NEUE WERKZEUG
+import keras_tuner as kt
 
 # Datenbank-Anbindung
 from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import insert
 from database import engine, predictions, daily_sentiment
 
-# Sentiment Analyse
+# Sentiment & alternative Daten
 import finnhub
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+import yfinance as yf
 
 # ==============================================================================
 # 1. ZENTRALE KONFIGURATION
@@ -38,7 +39,6 @@ SYMBOLS = ["BTC/USD", "XAU/USD"]
 MODELS_DIR = "models"
 INITIAL_CAPITAL = 100
 SEQUENCE_LENGTH = 60
-RISK_PER_TRADE = 0.02 # 2% des Kapitals pro Trade
 
 MINIMUM_TRADE_SIZES = {
     "BTC/USD": 0.001,
@@ -46,33 +46,15 @@ MINIMUM_TRADE_SIZES = {
 }
 
 STRATEGIES = {
-    'daily_lstm': {
-        'features': ['close', 'SMA_50', 'RSI', 'sentiment_score'],
-        'feature_func': lambda df: df.assign(
-            SMA_50=ta.trend.sma_indicator(df['close'], window=50),
-            RSI=ta.momentum.rsi(df['close'], window=14)
-        )
-    },
-    'genius_lstm': {
-        'features': ['close', 'RSI', 'MACD_diff', 'WilliamsR', 'ATR', 'sentiment_score'],
-        'feature_func': lambda df: df.assign(
-            RSI=ta.momentum.rsi(df['close'], window=14),
-            MACD_diff=ta.trend.macd_diff(df['close'], window_slow=26, window_fast=12, window_sign=9),
-            WilliamsR=ta.momentum.williams_r(df['high'], df['low'], df['close'], lbp=14),
-            ATR=ta.volatility.average_true_range(df['high'], df['low'], df['close'], window=14)
-        )
-    }
+    'daily_lstm': { 'features': ['close', 'SMA_50', 'RSI', 'sentiment_score', 'vix'], 'feature_func': lambda df: df.assign(SMA_50=ta.trend.sma_indicator(df['close'], window=50), RSI=ta.momentum.rsi(df['close'], window=14))},
+    'genius_lstm': { 'features': ['close', 'RSI', 'MACD_diff', 'WilliamsR', 'ATR', 'sentiment_score', 'vix'], 'feature_func': lambda df: df.assign(RSI=ta.momentum.rsi(df['close'], window=14), MACD_diff=ta.trend.macd_diff(df['close'], window_slow=26, window_fast=12, window_sign=9), WilliamsR=ta.momentum.williams_r(df['high'], df['low'], df['close'], lbp=14), ATR=ta.volatility.average_true_range(df['high'], df['low'], df['close'], window=14))}
 }
 
 # ==============================================================================
 # 2. HILFSFUNKTIONEN
 # ==============================================================================
 def load_data_with_sentiment(symbol, conn):
-    query = text("""
-        SELECT h.timestamp, h.open, h.high, h.low, h.close, h.volume, COALESCE(s.sentiment_score, 0.0) as sentiment_score
-        FROM historical_data_daily h LEFT JOIN daily_sentiment s ON h.symbol = s.asset AND DATE(h.timestamp) = s.date
-        WHERE h.symbol = :symbol ORDER BY h.timestamp ASC
-    """)
+    query = text("SELECT h.timestamp, h.open, h.high, h.low, h.close, h.volume, h.vix, COALESCE(s.sentiment_score, 0.0) as sentiment_score FROM historical_data_daily h LEFT JOIN daily_sentiment s ON h.symbol = s.asset AND DATE(h.timestamp) = s.date WHERE h.symbol = :symbol ORDER BY h.timestamp ASC")
     df = pd.read_sql_query(query, conn, params={'symbol': symbol})
     df['sentiment_score'] = df['sentiment_score'].ffill().bfill().fillna(0.0)
     return df
@@ -98,22 +80,43 @@ def prepare_data_for_lstm(df, features):
 # ==============================================================================
 def fetch_data():
     if not TWELVEDATA_API_KEY: print("FEHLER: TWELVEDATA_API_KEY nicht gefunden."); return
-    print("=== STARTE DATEN-IMPORT (TWELVEDATA) ===")
+    print("=== STARTE DATEN-IMPORT (TWELVEDATA + VIX) ===")
+    
+    print("\n--- Lade VIX (Angst-Index) Daten von yfinance ---")
+    try:
+        vix_df = yf.download('^VIX', period="max", interval="1d")
+        if isinstance(vix_df.columns, pd.MultiIndex): vix_df.columns = vix_df.columns.get_level_values(0)
+        vix_df.reset_index(inplace=True)
+        vix_df.columns = [col.lower() for col in vix_df.columns]
+        vix_df = vix_df[['date', 'close']]
+        vix_df.rename(columns={'date': 'timestamp', 'close': 'vix'}, inplace=True)
+        vix_df['timestamp'] = pd.to_datetime(vix_df['timestamp']).dt.tz_localize(None)
+        print(f"✅ {len(vix_df)} VIX-Datenpunkte geladen.")
+    except Exception as e: print(f"FEHLER beim Laden der VIX-Daten: {e}"); return
+
     with engine.connect() as conn:
         for symbol in SYMBOLS:
+            print(f"\n--- Lade Daten für {symbol} von Twelvedata ---")
             try:
                 url = f"https://api.twelvedata.com/time_series?symbol={symbol}&interval=1day&outputsize=5000&apikey={TWELVEDATA_API_KEY}"
-                response = requests.get(url, timeout=20); response.raise_for_status(); data = response.json()
+                response = requests.get(url, timeout=30); response.raise_for_status(); data = response.json()
                 if data.get('status') == 'ok' and 'values' in data:
-                    records = [{'timestamp': datetime.strptime(v['datetime'], '%Y-%m-%d'), 'symbol': symbol, 'open': float(v['open']), 'high': float(v['high']), 'low': float(v['low']), 'close': float(v['close']), 'volume': int(v.get('volume', 0))} for v in data['values']]
+                    df_asset = pd.DataFrame(data['values']); df_asset['timestamp'] = pd.to_datetime(df_asset['datetime'])
+                    df_merged = pd.merge(df_asset, vix_df, on='timestamp', how='left')
+                    df_merged['vix'] = df_merged['vix'].ffill().bfill()
+                    df_merged.dropna(subset=['vix'], inplace=True)
+                    records = [{'timestamp': r['timestamp'], 'symbol': symbol, 'open': float(r['open']), 'high': float(r['high']), 'low': float(r['low']), 'close': float(r['close']), 'volume': int(r.get('volume', 0)), 'vix': float(r['vix'])} for _, r in df_merged.iterrows()]
                     if not records: continue
+                    print(f"Füge {len(records)} Datensätze für {symbol} inkl. VIX in die DB ein...")
                     trans = conn.begin()
-                    for record in records:
-                        stmt = text("INSERT INTO historical_data_daily (timestamp, symbol, open, high, low, close, volume) VALUES (:timestamp, :symbol, :open, :high, :low, :close, :volume) ON CONFLICT (timestamp, symbol) DO NOTHING")
-                        conn.execute(stmt, record)
-                    trans.commit(); print(f"✅ {len(records)} Datensätze für {symbol} importiert.")
+                    try:
+                        for record in records:
+                            stmt = text("INSERT INTO historical_data_daily (timestamp, symbol, open, high, low, close, volume, vix) VALUES (:timestamp, :symbol, :open, :high, :low, :close, :volume, :vix) ON CONFLICT (timestamp, symbol) DO UPDATE SET open = EXCLUDED.open, high = EXCLUDED.high, low = EXCLUDED.low, close = EXCLUDED.close, volume = EXCLUDED.volume, vix = EXCLUDED.vix")
+                            conn.execute(stmt, record)
+                        trans.commit(); print(f"✅ Daten für {symbol} erfolgreich importiert.")
+                    except Exception as e_insert: trans.rollback(); print(f"FEHLER beim Einfügen: {e_insert}")
                 else: print(f"Fehlerhafte API-Antwort: {data.get('message')}")
-            except Exception as e: print(f"Ein FEHLER bei {symbol}: {e}")
+            except Exception as e: print(f"Ein FEHLER ist bei {symbol} aufgetreten: {e}")
     print("\n=== DATEN-IMPORT ABGESCHLOSSEN ===")
 
 def fetch_sentiment():
@@ -135,34 +138,16 @@ def fetch_sentiment():
                 conn.execute(stmt); conn.commit()
             except Exception as e: print(f"FEHLER bei Sentiment für {asset}: {e}")
     print("\n=== SENTIMENT-ANALYSE ABGESCHLOSSEN ===")
-    
-    # NEUE FUNKTION: Der Bauplan für die KI, den der Tuner verwendet
+
 def build_model(hp):
-    """Baut ein LSTM-Modell mit variablen Hyperparametern."""
-    model = Sequential()
-    model.add(Input(shape=(SEQUENCE_LENGTH, len(STRATEGIES['genius_lstm']['features']))))
-    
-    # HIER PASSIERT DIE MAGIE: Wir definieren Test-Bereiche anstatt fester Werte
-    model.add(LSTM(
-        units=hp.Int('units_1', min_value=40, max_value=120, step=10),
-        return_sequences=True
-    ))
-    model.add(Dropout(hp.Float('dropout_1', min_value=0.1, max_value=0.5, step=0.1)))
-    
-    model.add(LSTM(
-        units=hp.Int('units_2', min_value=40, max_value=120, step=10),
-        return_sequences=False
-    ))
-    model.add(Dropout(hp.Float('dropout_2', min_value=0.1, max_value=0.5, step=0.1)))
-    
-    model.add(Dense(units=hp.Int('dense_units', min_value=20, max_value=60, step=5)))
+    model = Sequential([Input(shape=(SEQUENCE_LENGTH, len(hp.get('features'))))])
+    model.add(LSTM(units=hp.Int('units_1', 40, 120, 10), return_sequences=True))
+    model.add(Dropout(hp.Float('dropout_1', 0.1, 0.5, 0.1)))
+    model.add(LSTM(units=hp.Int('units_2', 40, 120, 10)))
+    model.add(Dropout(hp.Float('dropout_2', 0.1, 0.5, 0.1)))
+    model.add(Dense(units=hp.Int('dense_units', 20, 60, 5)))
     model.add(Dense(3, activation='softmax'))
-    
-    model.compile(
-        optimizer=tf.keras.optimizers.Adam(hp.Choice('learning_rate', values=[1e-2, 1e-3, 1e-4])),
-        loss='categorical_crossentropy',
-        metrics=['accuracy']
-    )
+    model.compile(optimizer=tf.keras.optimizers.Adam(hp.Choice('learning_rate', [1e-2, 1e-3, 1e-4])), loss='categorical_crossentropy', metrics=['accuracy'])
     return model
 
 def tune_and_train_best_model():
@@ -172,44 +157,31 @@ def tune_and_train_best_model():
         for symbol in SYMBOLS:
             print(f"\nLade Daten & Sentiment für {symbol}...")
             df_raw = load_data_with_sentiment(symbol, conn)
-            if len(df_raw) < 300: continue # Brauchen mehr Daten fürs Tuning
-
+            if len(df_raw) < 300: continue
             for name, config in STRATEGIES.items():
                 print(f"--- Tune & Train '{name}' für {symbol} ---")
                 try:
                     df_features = config['feature_func'](df_raw.copy())
                     X, y, scaler = prepare_data_for_lstm(df_features, config['features'])
                     if X is None: continue
-
                     X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42)
                     y_train_cat, y_val_cat = tf.keras.utils.to_categorical(y_train, 3), tf.keras.utils.to_categorical(y_val, 3)
-
-                    # Der Robo-Mechaniker (Tuner)
-                    tuner = kt.Hyperband(
-                        build_model,
-                        objective='val_accuracy',
-                        max_epochs=50,
-                        factor=3,
-                        directory='tuning_dir',
-                        project_name=f'{name}_{symbol.replace("/", "")}'
-                    )
                     
+                    # Übergebe die Features an die Build-Funktion
+                    hp = kt.HyperParameters()
+                    hp.Fixed('features', config['features'])
+                    
+                    tuner = kt.Hyperband(lambda hp: build_model(hp), objective='val_accuracy', max_epochs=50, factor=3, directory='tuning_dir', project_name=f'{name}_{symbol.replace("/", "")}')
                     stop_early = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=5)
                     print("Starte die Suche nach der besten KI-Architektur...")
                     tuner.search(X_train, y_train_cat, epochs=50, validation_data=(X_val, y_val_cat), callbacks=[stop_early], verbose=1)
-
-                    # Hole das beste Modell und speichere es
                     best_hps = tuner.get_best_hyperparameters(num_trials=1)[0]
                     print(f"Beste Konfiguration gefunden: Units1={best_hps.get('units_1')}, Units2={best_hps.get('units_2')}, LR={best_hps.get('learning_rate')}")
-                    
                     model = tuner.get_best_models(num_models=1)[0]
                     base_path = f"{MODELS_DIR}/model_{name}_{symbol.replace('/', '')}"
-                    model.save(f"{base_path}.keras")
-                    joblib.dump(scaler, f"{base_path}_scaler.pkl")
+                    model.save(f"{base_path}.keras"); joblib.dump(scaler, f"{base_path}_scaler.pkl")
                     print(f"✅ Bestes Modell für {name} erfolgreich trainiert und gespeichert.")
-
-                except Exception as e:
-                    print(f"FEHLER beim Tuning: {e}")
+                except Exception as e: print(f"FEHLER beim Tuning: {e}")
     print("\n=== HYPER-ANTRIEB ABGESCHLOSSEN ===")
 
 def train_all_models():
@@ -356,16 +328,17 @@ def predict_all_signals():
 # ==============================================================================
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Master-Controller für die Finanz-App.")
-    # Der neue 'tune'-Modus ist da!
-    parser.add_argument("mode", choices=['fetch-data', 'fetch-sentiment', 'tune', 'backtest', 'predict'], help="Der auszuführende Modus.")
+    parser.add_argument("mode", choices=['fetch-data', 'fetch-sentiment', 'train', 'tune', 'backtest', 'predict'], help="Der auszuführende Modus.")
     args = parser.parse_args()
 
     if args.mode == 'fetch-data':
         fetch_data()
     elif args.mode == 'fetch-sentiment':
         fetch_sentiment()
+    elif args.mode == 'train':
+        train_all_models()
     elif args.mode == 'tune':
-        tune_and_train_best_model()
+        tune_and_train_best_model() # KORREKTER FUNKTIONSAUFRUF
     elif args.mode == 'backtest':
         backtest_all_models()
     elif args.mode == 'predict':
