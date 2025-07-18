@@ -1,4 +1,4 @@
-# backend/master_controller.py (Die finale, vollständige Version)
+# backend/master_controller.py (Die finale, vollständige und unzerstörbare Version)
 import pandas as pd
 import numpy as np
 import joblib
@@ -39,6 +39,12 @@ SYMBOLS = ["BTC/USD", "XAU/USD"]
 MODELS_DIR = "models"
 INITIAL_CAPITAL = 100
 SEQUENCE_LENGTH = 60
+RISK_PER_TRADE = 0.02
+
+MINIMUM_TRADE_SIZES = {
+    "BTC/USD": 0.001,
+    "XAU/USD": 0.003
+}
 
 STRATEGIES = {
     'daily_ensemble': {
@@ -209,7 +215,7 @@ def train_all_models():
 
 
 def backtest_all_models():
-    print("=== STARTE ENSEMBLE BACKTESTING (FINALE VERSION) ===")
+    print("=== STARTE ENSEMBLE BACKTESTING (3 TITANEN) ===")
     all_results = {}
     equity_curves = {}
     with engine.connect() as conn:
@@ -244,8 +250,7 @@ def backtest_all_models():
                             model = joblib.load(f"{base_path}.pkl")
                             scaler = joblib.load(f"{base_path}_scaler.pkl")
                             X_backtest = df_features[config['features_tree']]
-                            # KORREKTUR: Wir übergeben nur die reinen Zahlenwerte
-                            X_scaled = scaler.transform(X_backtest.values)
+                            X_scaled = scaler.transform(X_backtest.values) # .values für saubere Logs
                             predicted_classes = model.predict(X_scaled)
                             team_predictions[f'signal_{model_type}'] = predicted_classes
 
@@ -309,7 +314,6 @@ def predict_all_signals():
                             model = joblib.load(f"{base_path}.pkl")
                             scaler = joblib.load(f"{base_path}_scaler.pkl")
                             X_predict = df_features[config['features_tree']].tail(1)
-                            # KORREKTUR: Wir übergeben nur die reinen Zahlenwerte
                             X_scaled = scaler.transform(X_predict.values)
                             prediction = model.predict(X_scaled)[0]
                             predictions_list.append(int(prediction))
@@ -333,7 +337,6 @@ def predict_all_signals():
                 except Exception as e:
                     print(f"FEHLER bei der Vorhersage für {name}: {e}")
     print("\n=== SIGNAL-GENERATOR ABGESCHLOSSEN ===")
-
 
 # ==============================================================================
 # 4. STEUERUNG
