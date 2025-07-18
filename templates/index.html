@@ -99,10 +99,12 @@
               data.forEach((asset) => {
                 const card = document.createElement("div");
                 card.className = `signal-card ${asset.color}`;
+                // In templates/index.html -> JavaScript-Teil -> fetchSignalData()
                 card.innerHTML = `
                     <div class="card-header"><span class="asset-name">${asset.asset}</span><span class="material-icons icon">${asset.icon}</span></div>
                     <div class="card-body">
                         <div class="trade-info"><strong>Signal:</strong> ${asset.signal}</div>
+                        <div class="trade-info"><strong>Konfidenz:</strong> ${asset.confidence}</div>
                         <div class="trade-info"><strong>Einstieg:</strong> ${asset.entry}</div>
                         <div class="trade-info"><strong>Take Profit:</strong> ${asset.takeProfit}</div>
                         <div class="trade-info"><strong>Stop Loss:</strong> ${asset.stopLoss}</div>

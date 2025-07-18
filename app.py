@@ -32,34 +32,41 @@ def dashboard():
     return render_template('dashboard.html', results=results)
 
 # --- API ROUTEN ---
-@app.route('/api/assets')
 # In backend/app.py -> die Funktion get_assets ersetzen
 @app.route('/api/assets')
 def get_assets():
     """Stellt die Live-Signale für die Webseite bereit."""
-    # KORREKTUR: Wir fragen standardmäßig nach unserer neuen Super-Strategie
-    strategy = request.args.get('strategy', 'genius_lstm') 
+    strategy = request.args.get('strategy', 'daily_lstm') # Angepasst auf neuen Standard
     assets_data = []
     try:
         with engine.connect() as conn:
+            # Wir holen jetzt alle Spalten aus der Predictions-Tabelle
             query = text("SELECT * FROM predictions WHERE strategy = :strategy ORDER BY symbol")
             db_results = conn.execute(query, {"strategy": strategy}).fetchall()
 
             for row in db_results:
                 prediction = row._asdict()
                 signal_text = prediction.get('signal', 'Halten')
-                color, icon = "grey", "circle"
-                if signal_text == "Kaufen": color, icon = "green", "arrow-up"
-                elif signal_text == "Verkaufen": color, icon = "red", "arrow-down"
                 
+                color, icon = "grey", "circle"
+                if signal_text == "Kaufen":
+                    color, icon = "green", "arrow-up"
+                elif signal_text == "Verkaufen":
+                    color, icon = "red", "arrow-down"
+                
+                # Die neuen Daten werden hier zum Senden vorbereitet
                 assets_data.append({
                     "asset": prediction.get('symbol', 'N/A').replace('/', ''),
-                    "confidence": f"{prediction.get('confidence', 0.0):.2f}",
                     "entry": f"{prediction.get('entry_price'):.4f}" if prediction.get('entry_price') else "N/A",
                     "takeProfit": f"{prediction.get('take_profit'):.4f}" if prediction.get('take_profit') else "N/A",
                     "stopLoss": f"{prediction.get('stop_loss'):.4f}" if prediction.get('stop_loss') else "N/A",
-                    "signal": signal_text, "color": color, "icon": icon,
-                    "timestamp": prediction.get('last_updated').strftime('%Y-%m-%d %H:%M:%S') if prediction.get('last_updated') else "N/A"
+                    "signal": signal_text,
+                    "color": color,
+                    "icon": icon,
+                    "timestamp": prediction.get('last_updated').strftime('%Y-%m-%d %H:%M:%S') if prediction.get('last_updated') else "N/A",
+                    # HIER SIND DIE NEUEN DATENPUNKTE
+                    "confidence": f"{prediction.get('confidence'):.2f}%" if prediction.get('confidence') is not None else "N/A",
+                    "positionSize": f"{prediction.get('position_size'):.4f}" if prediction.get('position_size') is not None else "N/A"
                 })
         return jsonify(assets_data)
     except Exception as e:
