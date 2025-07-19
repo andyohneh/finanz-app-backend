@@ -102,9 +102,11 @@ def create_target_for_tree_models(df, period=5):
 # ==============================================================================
 # 3. KERNFUNKTIONEN
 # ==============================================================================
+# In backend/master_controller.py -> die Funktion fetch_data ersetzen
 def fetch_data():
     if not TWELVEDATA_API_KEY: print("FEHLER: TWELVEDATA_API_KEY nicht gefunden."); return
-    print("=== STARTE DATEN-IMPORT (TWELVEDATA + VIX) ===")
+    print("=== STARTE DATEN-IMPORT (Multi-Source) ===")
+    
     print("\n--- Lade VIX (Angst-Index) Daten von yfinance ---")
     try:
         vix_df = yf.download('^VIX', period="max", interval="1d")
@@ -115,31 +117,57 @@ def fetch_data():
         vix_df.rename(columns={'date': 'timestamp', 'close': 'vix'}, inplace=True)
         vix_df['timestamp'] = pd.to_datetime(vix_df['timestamp']).dt.tz_localize(None)
         print(f"✅ {len(vix_df)} VIX-Datenpunkte geladen.")
-    except Exception as e: print(f"FEHLER beim Laden der VIX-Daten: {e}"); return
+    except Exception as e:
+        print(f"FEHLER beim Laden der VIX-Daten: {e}"); return
 
     with engine.connect() as conn:
         for symbol in SYMBOLS:
-            print(f"\n--- Lade Daten für {symbol} von Twelvedata ---")
+            print(f"\n--- Verarbeite {symbol} ---")
+            df_asset = pd.DataFrame()
             try:
-                url = f"https://api.twelvedata.com/time_series?symbol={symbol}&interval=1day&outputsize=5000&apikey={TWELVEDATA_API_KEY}"
-                response = requests.get(url, timeout=30); response.raise_for_status(); data = response.json()
-                if data.get('status') == 'ok' and 'values' in data:
-                    df_asset = pd.DataFrame(data['values']); df_asset['timestamp'] = pd.to_datetime(df_asset['datetime'])
-                    df_merged = pd.merge(df_asset, vix_df, on='timestamp', how='left')
-                    df_merged['vix'] = df_merged['vix'].ffill().bfill()
-                    df_merged.dropna(subset=['vix'], inplace=True)
-                    records = [{'timestamp': r['timestamp'], 'symbol': symbol, 'open': float(r['open']), 'high': float(r['high']), 'low': float(r['low']), 'close': float(r['close']), 'volume': int(r.get('volume', 0)), 'vix': float(r['vix'])} for _, r in df_merged.iterrows()]
-                    if not records: continue
-                    print(f"Füge {len(records)} Datensätze für {symbol} inkl. VIX in die DB ein...")
-                    trans = conn.begin()
-                    try:
-                        for record in records:
-                            stmt = text("INSERT INTO historical_data_daily (timestamp, symbol, open, high, low, close, volume, vix) VALUES (:timestamp, :symbol, :open, :high, :low, :close, :volume, :vix) ON CONFLICT (timestamp, symbol) DO UPDATE SET open = EXCLUDED.open, high = EXCLUDED.high, low = EXCLUDED.low, close = EXCLUDED.close, volume = EXCLUDED.volume, vix = EXCLUDED.vix")
-                            conn.execute(stmt, record)
-                        trans.commit(); print(f"✅ Daten für {symbol} erfolgreich importiert.")
-                    except Exception as e_insert: trans.rollback(); print(f"FEHLER beim Einfügen: {e_insert}")
-                else: print(f"Fehlerhafte API-Antwort von Twelvedata: {data.get('message')}")
-            except Exception as e: print(f"Ein FEHLER ist bei {symbol} aufgetreten: {e}")
+                if symbol == "XAU/USD":
+                    print(f"-> Lade {symbol} von yfinance (Ticker: GC=F)...")
+                    df_asset_raw = yf.download('GC=F', period="max", interval="1d")
+                    
+                    # HIER IST DIE FINALE KORREKTUR für Gold-Daten
+                    if isinstance(df_asset_raw.columns, pd.MultiIndex):
+                        df_asset_raw.columns = df_asset_raw.columns.get_level_values(0)
+                    df_asset_raw.reset_index(inplace=True)
+                    df_asset_raw.columns = [col.lower() for col in df_asset_raw.columns]
+                    
+                    df_asset_raw.rename(columns={'date': 'datetime'}, inplace=True)
+                    df_asset = df_asset_raw[['datetime', 'open', 'high', 'low', 'close', 'volume']]
+                else:
+                    print(f"-> Lade {symbol} von Twelvedata...")
+                    url = f"https://api.twelvedata.com/time_series?symbol={symbol}&interval=1day&outputsize=5000&apikey={TWELVEDATA_API_KEY}"
+                    response = requests.get(url, timeout=30); response.raise_for_status(); data = response.json()
+                    if data.get('status') == 'ok' and 'values' in data:
+                        df_asset = pd.DataFrame(data['values'])
+                
+                if df_asset.empty:
+                    print(f"Keine Daten für {symbol} gefunden.")
+                    continue
+
+                df_asset['timestamp'] = pd.to_datetime(df_asset['datetime'])
+                df_merged = pd.merge(df_asset, vix_df, on='timestamp', how='left')
+                df_merged['vix'] = df_merged['vix'].ffill().bfill()
+                df_merged.dropna(subset=['vix'], inplace=True)
+                
+                records = [{'timestamp': r['timestamp'], 'symbol': symbol, 'open': float(r['open']), 'high': float(r['high']), 'low': float(r['low']), 'close': float(r['close']), 'volume': int(r.get('volume', 0)), 'vix': float(r['vix'])} for _, r in df_merged.iterrows()]
+                
+                if not records: continue
+
+                print(f"Füge {len(records)} Datensätze für {symbol} inkl. VIX in die DB ein...")
+                trans = conn.begin()
+                try:
+                    for record in records:
+                        stmt = text("INSERT INTO historical_data_daily (timestamp, symbol, open, high, low, close, volume, vix) VALUES (:timestamp, :symbol, :open, :high, :low, :close, :volume, :vix) ON CONFLICT (timestamp, symbol) DO UPDATE SET open = EXCLUDED.open, high = EXCLUDED.high, low = EXCLUDED.low, close = EXCLUDED.close, volume = EXCLUDED.volume, vix = EXCLUDED.vix")
+                        conn.execute(stmt, record)
+                    trans.commit(); print(f"✅ Daten für {symbol} erfolgreich importiert.")
+                except Exception as e_insert: trans.rollback(); print(f"FEHLER beim Einfügen: {e_insert}")
+            
+            except Exception as e:
+                print(f"Ein schwerwiegender FEHLER ist bei {symbol} aufgetreten: {e}")
     print("\n=== DATEN-IMPORT ABGESCHLOSSEN ===")
 
 def fetch_sentiment():
