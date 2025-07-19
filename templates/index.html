@@ -79,7 +79,7 @@
         const strategyTabs = document.querySelectorAll(".strategy-tab");
 
         let chart = null;
-        let currentStrategy = "daily_lstm"; // WICHTIG: Start-Strategie angepasst
+        let currentStrategy = "daily_lstm"; // Angepasst auf neuen Standard
 
         function fetchSignalData(strategy) {
           signalCardsContainer.innerHTML = '<div class="loader"></div>';
@@ -93,25 +93,24 @@
               signalCardsContainer.innerHTML = "";
               if (!data || data.length === 0) {
                 signalCardsContainer.innerHTML =
-                  '<p class="error-msg">Keine Signale für diese Strategie verfügbar. (Training oder Predict ausführen)</p>';
+                  '<p class="error-msg">Keine Signale für diese Strategie verfügbar.</p>';
                 return;
               }
               data.forEach((asset) => {
                 const card = document.createElement("div");
                 card.className = `signal-card ${asset.color}`;
-                // In templates/index.html -> JavaScript-Teil -> fetchSignalData()
                 card.innerHTML = `
-                    <div class="card-header"><span class="asset-name">${asset.asset}</span><span class="material-icons icon">${asset.icon}</span></div>
-                    <div class="card-body">
-                        <div class="trade-info"><strong>Signal:</strong> ${asset.signal}</div>
-                        <div class="trade-info"><strong>Konfidenz:</strong> ${asset.confidence}</div>
-                        <div class="trade-info"><strong>Einstieg:</strong> ${asset.entry}</div>
-                        <div class="trade-info"><strong>Take Profit:</strong> ${asset.takeProfit}</div>
-                        <div class="trade-info"><strong>Stop Loss:</strong> ${asset.stopLoss}</div>
-                        <div class="trade-info"><strong>Positionsgröße:</strong> ${asset.positionSize}</div>
-                    </div>
-                    <div class="card-footer"><small>Letztes Update: ${asset.timestamp}</small></div>
-                `;
+                            <div class="card-header"><span class="asset-name">${asset.asset}</span><span class="material-icons icon">${asset.icon}</span></div>
+                            <div class="card-body">
+                                <div class="trade-info"><strong>Signal:</strong> ${asset.signal}</div>
+                                <div class="trade-info"><strong>Konfidenz:</strong> ${asset.confidence}</div>
+                                <div class="trade-info"><strong>Einstieg:</strong> ${asset.entry}</div>
+                                <div class="trade-info"><strong>Take Profit:</strong> ${asset.takeProfit}</div>
+                                <div class="trade-info"><strong>Stop Loss:</strong> ${asset.stopLoss}</div>
+                                <div class="trade-info"><strong>Positionsgröße:</strong> ${asset.positionSize}</div>
+                            </div>
+                            <div class="card-footer"><small>Letztes Update: ${asset.timestamp}</small></div>
+                        `;
                 card.addEventListener("click", () =>
                   openChartModal(asset.asset)
                 );
@@ -189,7 +188,6 @@
           if (event.target == modal) modal.style.display = "none";
         };
 
-        // Lade die Signale für die Standard-Strategie, sobald die Seite geladen ist
         fetchSignalData(currentStrategy);
       });
     </script>

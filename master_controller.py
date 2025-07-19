@@ -47,7 +47,7 @@ MINIMUM_TRADE_SIZES = {
 }
 
 STRATEGIES = {
-    'daily_ensemble': {
+    'daily_lstm': { # Dein neuer, sauberer Name
         'models': ['lstm', 'lgbm', 'rf'],
         'features_lstm': ['close', 'SMA_50', 'RSI', 'sentiment_score', 'vix'],
         'features_tree': ['SMA_50', 'RSI', 'sentiment_score', 'vix'],
@@ -55,7 +55,7 @@ STRATEGIES = {
             SMA_50=ta.trend.sma_indicator(df['close'], window=50),
             RSI=ta.momentum.rsi(df['close'], window=14))
     },
-    'genius_ensemble': {
+    'genius_lstm': { # Dein neuer, sauberer Name
         'models': ['lstm', 'lgbm', 'rf'],
         'features_lstm': ['close', 'RSI', 'MACD_diff', 'WilliamsR', 'ATR', 'sentiment_score', 'vix'],
         'features_tree': ['RSI', 'MACD_diff', 'WilliamsR', 'ATR', 'sentiment_score', 'vix'],
