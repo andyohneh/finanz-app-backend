@@ -1,30 +1,18 @@
 {
-    "daily_ensemble": [
+    "daily_lstm": [
         {
             "Symbol": "BTC/USD",
-            "Gesamtrendite_%": 3768.35,
-            "Gewinnrate_%": 51.19,
-            "Anzahl_Trades": 2559
-        },
-        {
-            "Symbol": "XAU/USD",
-            "Gesamtrendite_%": 897.88,
-            "Gewinnrate_%": 37.66,
-            "Anzahl_Trades": 1394
+            "Gesamtrendite_%": 3758.15,
+            "Gewinnrate_%": 51.34,
+            "Anzahl_Trades": 2571
         }
     ],
-    "genius_ensemble": [
+    "genius_lstm": [
         {
             "Symbol": "BTC/USD",
-            "Gesamtrendite_%": 3823.19,
-            "Gewinnrate_%": 51.82,
-            "Anzahl_Trades": 2671
-        },
-        {
-            "Symbol": "XAU/USD",
-            "Gesamtrendite_%": 924.63,
-            "Gewinnrate_%": 37.98,
-            "Anzahl_Trades": 1464
+            "Gesamtrendite_%": 3767.34,
+            "Gewinnrate_%": 51.56,
+            "Anzahl_Trades": 2659
         }
     ]
 }
